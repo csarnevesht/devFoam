@@ -24,6 +24,11 @@ class CADToGCodeConverter:
         self.root.geometry("1000x700")
         
         self.shapes = []
+        self.selected_shape_index = None
+        self.edit_mode = False
+        self.canvas_scale = 1.0
+        self.canvas_offset_x = 0.0
+        self.canvas_offset_y = 0.0
         self.setup_ui()
         
     def setup_ui(self):
@@ -62,6 +67,67 @@ class CADToGCodeConverter:
         # Shape count label
         self.shape_count_label = ttk.Label(left_panel, text="Shapes: 0")
         self.shape_count_label.pack(pady=5)
+        
+        # Edit mode controls
+        edit_frame = ttk.LabelFrame(left_panel, text="Path Control", padding="5")
+        edit_frame.pack(fill=tk.X, pady=5)
+        
+        self.edit_mode_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(edit_frame, text="Edit Mode (Click shapes to configure)", 
+                       variable=self.edit_mode_var,
+                       command=self.toggle_edit_mode).pack(anchor=tk.W, pady=2)
+        
+        self.selected_label = ttk.Label(edit_frame, text="Selected: None")
+        self.selected_label.pack(anchor=tk.W, pady=2)
+        
+        # Start point controls
+        start_frame = ttk.Frame(edit_frame)
+        start_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(start_frame, text="Start Point:").pack(side=tk.LEFT, padx=5)
+        self.start_point_var = tk.StringVar(value="Auto")
+        start_combo = ttk.Combobox(start_frame, textvariable=self.start_point_var, 
+                                  state="readonly", width=15)
+        start_combo.pack(side=tk.LEFT, padx=5)
+        self.start_point_combo = start_combo
+        
+        # Direction controls
+        dir_frame = ttk.Frame(edit_frame)
+        dir_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(dir_frame, text="Direction:").pack(side=tk.LEFT, padx=5)
+        self.direction_var = tk.StringVar(value="Auto")
+        dir_combo = ttk.Combobox(dir_frame, textvariable=self.direction_var,
+                                values=["Auto", "Clockwise", "Counter-Clockwise"],
+                                state="readonly", width=15)
+        dir_combo.pack(side=tk.LEFT, padx=5)
+        dir_combo.bind("<<ComboboxSelected>>", self.on_direction_changed)
+        
+        # Entry/Exit point controls
+        entry_frame = ttk.Frame(edit_frame)
+        entry_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(entry_frame, text="Entry Point:").pack(side=tk.LEFT, padx=5)
+        self.entry_point_var = tk.StringVar(value="Auto")
+        entry_combo = ttk.Combobox(entry_frame, textvariable=self.entry_point_var,
+                                  state="readonly", width=15)
+        entry_combo.pack(side=tk.LEFT, padx=5)
+        self.entry_point_combo = entry_combo
+        entry_combo.bind("<<ComboboxSelected>>", self.on_entry_point_changed)
+        
+        exit_frame = ttk.Frame(edit_frame)
+        exit_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(exit_frame, text="Exit Point:").pack(side=tk.LEFT, padx=5)
+        self.exit_point_var = tk.StringVar(value="Auto")
+        exit_combo = ttk.Combobox(exit_frame, textvariable=self.exit_point_var,
+                                 state="readonly", width=15)
+        exit_combo.pack(side=tk.LEFT, padx=5)
+        self.exit_point_combo = exit_combo
+        exit_combo.bind("<<ComboboxSelected>>", self.on_exit_point_changed)
+        
+        # Bind canvas click - but only when edit mode is enabled
+        # Don't bind here, bind it when edit mode is toggled on
+        self.snap_to_corner = True  # Enable corner snapping
+        
+        # Test click handler - always bind for testing
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
         
         # Right panel - G-code settings
         right_panel = ttk.LabelFrame(main_frame, text="G-code Settings", padding="10")
@@ -243,6 +309,12 @@ class CADToGCodeConverter:
         """Update the visual canvas with shapes"""
         self.canvas.delete("all")
         
+        # Show edit mode instruction if active
+        if self.edit_mode:
+            self.canvas.create_text(10, 10, anchor=tk.NW, 
+                                  text="Edit Mode: Click on shapes or points to configure",
+                                  fill="blue", font=("Arial", 10, "bold"))
+        
         if not self.shapes:
             self.shape_count_label.config(text="Shapes: 0")
             return
@@ -347,7 +419,97 @@ class CADToGCodeConverter:
                 for x, y in shape["points"]:
                     points.extend([x * scale + offset_x, canvas_height - (y * scale + offset_y)])
                 if len(points) >= 4:
-                    self.canvas.create_line(*points, fill="black", width=2)
+                    # Check if this shape is selected
+                    shape_idx = self.shapes.index(shape)
+                    is_selected = (self.edit_mode and shape_idx == self.selected_shape_index)
+                    color = "blue" if is_selected else "black"
+                    width = 3 if is_selected else 2
+                    self.canvas.create_line(*points, fill=color, width=width)
+                    
+                    # Draw start point marker if specified
+                    start_idx = shape.get("start_index")
+                    if start_idx is not None and 0 <= start_idx < len(shape["points"]):
+                        start_pt = shape["points"][start_idx]
+                        sx = start_pt[0] * scale + offset_x
+                        sy = canvas_height - (start_pt[1] * scale + offset_y)
+                        # Draw green circle for start point
+                        self.canvas.create_oval(sx - 6, sy - 6, sx + 6, sy + 6,
+                                              fill="green", outline="darkgreen", width=2)
+                        self.canvas.create_text(sx, sy - 10, text="START", fill="green", font=("Arial", 8, "bold"))
+                    
+                    # Draw entry point marker (blue)
+                    entry_idx = shape.get("entry_index")
+                    if entry_idx is not None and 0 <= entry_idx < len(shape["points"]):
+                        entry_pt = shape["points"][entry_idx]
+                        ex = entry_pt[0] * scale + offset_x
+                        ey = canvas_height - (entry_pt[1] * scale + offset_y)
+                        # Draw blue circle for entry point
+                        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
+                                              fill="blue", outline="darkblue", width=2)
+                        self.canvas.create_text(ex, ey - 10, text="ENTRY", fill="blue", font=("Arial", 8, "bold"))
+                    
+                    # Draw exit point marker (red)
+                    exit_idx = shape.get("exit_index")
+                    if exit_idx is not None and 0 <= exit_idx < len(shape["points"]):
+                        exit_pt = shape["points"][exit_idx]
+                        ex = exit_pt[0] * scale + offset_x
+                        ey = canvas_height - (exit_pt[1] * scale + offset_y)
+                        # Draw red circle for exit point
+                        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
+                                              fill="red", outline="darkred", width=2)
+                        self.canvas.create_text(ex, ey - 10, text="EXIT", fill="red", font=("Arial", 8, "bold"))
+                    
+                    # Draw direction arrows for closed polylines
+                    if shape.get("closed", False) and len(shape["points"]) > 2:
+                        clockwise = shape.get("clockwise")
+                        if clockwise is not None:
+                            import math
+                            # Draw arrows along the path showing direction
+                            num_arrows = min(8, len(shape["points"]))
+                            step = max(1, len(shape["points"]) // num_arrows)
+                            
+                            # Determine point order based on direction
+                            points_list = list(shape["points"])
+                            start_idx = shape.get("start_index", 0)
+                            if start_idx > 0:
+                                points_list = points_list[start_idx:] + points_list[:start_idx]
+                            
+                            # Calculate signed area to check natural direction
+                            area = 0.0
+                            for i in range(len(points_list)):
+                                j = (i + 1) % len(points_list)
+                                area += points_list[i][0] * points_list[j][1]
+                                area -= points_list[j][0] * points_list[i][1]
+                            is_naturally_clockwise = area < 0
+                            
+                            # Reverse if needed
+                            if clockwise != is_naturally_clockwise:
+                                points_list = [points_list[0]] + list(reversed(points_list[1:]))
+                            
+                            # Draw arrows
+                            for i in range(0, len(points_list), step):
+                                pt1 = points_list[i]
+                                next_i = (i + step) % len(points_list)
+                                pt2 = points_list[next_i]
+                                
+                                x1 = pt1[0] * scale + offset_x
+                                y1 = canvas_height - (pt1[1] * scale + offset_y)
+                                x2 = pt2[0] * scale + offset_x
+                                y2 = canvas_height - (pt2[1] * scale + offset_y)
+                                
+                                # Draw arrow
+                                angle = math.atan2(y2 - y1, x2 - x1)
+                                arrow_len = 8
+                                arrow_angle = math.pi / 6
+                                
+                                # Arrow head
+                                x3 = x2 - arrow_len * math.cos(angle - arrow_angle)
+                                y3 = y2 - arrow_len * math.sin(angle - arrow_angle)
+                                x4 = x2 - arrow_len * math.cos(angle + arrow_angle)
+                                y4 = y2 - arrow_len * math.sin(angle + arrow_angle)
+                                
+                                self.canvas.create_line(x2, y2, x3, y3, fill="green", width=2)
+                                self.canvas.create_line(x2, y2, x4, y4, fill="green", width=2)
         
         # Update scroll region
         self.canvas.update_idletasks()
@@ -355,6 +517,11 @@ class CADToGCodeConverter:
         
         # Update shape count
         self.shape_count_label.config(text=f"Shapes: {len(self.shapes)}")
+        
+        # Store scale and offset for click detection
+        self.canvas_scale = scale
+        self.canvas_offset_x = offset_x
+        self.canvas_offset_y = offset_y
             
     def generate_gcode(self):
         if not self.shapes:
@@ -397,6 +564,324 @@ class CADToGCodeConverter:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to generate G-code: {str(e)}")
             
+    def toggle_edit_mode(self):
+        """Toggle edit mode on/off"""
+        self.edit_mode = self.edit_mode_var.get()
+        print(f"Edit mode toggled: {self.edit_mode}")
+        if self.edit_mode:
+            self.canvas.config(cursor="crosshair")
+            # Ensure click binding is active
+            self.canvas.bind("<Button-1>", self.on_canvas_click)
+            print("Edit mode ON - click handler bound")
+        else:
+            self.canvas.config(cursor="")
+            self.selected_shape_index = None
+            self.selected_label.config(text="Selected: None")
+            # Unbind click handler when edit mode is off
+            self.canvas.unbind("<Button-1>")
+            print("Edit mode OFF - click handler unbound")
+        self.update_shapes_list()  # Redraw with selection highlights
+    
+    def on_canvas_click(self, event):
+        """Handle canvas click - select shape or point"""
+        print(f"Canvas clicked at ({event.x}, {event.y}), edit_mode={self.edit_mode}, shapes={len(self.shapes)}")
+        
+        # Visual feedback - draw a small marker at click location
+        self.canvas.create_oval(event.x - 5, event.y - 5, event.x + 5, event.y + 5, 
+                               fill="yellow", outline="orange", width=2, tags="click_marker")
+        self.root.after(1000, lambda: self.canvas.delete("click_marker"))  # Remove after 1 second
+        
+        if not self.edit_mode:
+            print("Edit mode is False, returning")
+            return
+        
+        if not self.shapes:
+            print("No shapes loaded!")
+            self.selected_label.config(text="No shapes loaded! Please load a CAD file first.")
+            return
+        
+        # Convert canvas coordinates to CAD coordinates
+        canvas_x = self.canvas.canvasx(event.x)
+        canvas_y = self.canvas.canvasy(event.y)
+        
+        # Get actual canvas dimensions
+        self.canvas.update_idletasks()
+        canvas_width = self.canvas.winfo_width() or 400
+        canvas_height = self.canvas.winfo_height() or 300
+        
+        # Convert to CAD coordinates (accounting for Y-axis flip)
+        # Canvas Y is top-down, CAD Y is bottom-up
+        # When drawing: canvas_y = canvas_height - (cad_y * scale + offset_y)
+        # So to convert back: cad_y = (canvas_height - canvas_y - offset_y) / scale
+        if self.canvas_scale > 0:
+            cad_x = (canvas_x - self.canvas_offset_x) / self.canvas_scale
+            # Flip Y: canvas_y is from top, CAD y is from bottom
+            # Reverse the drawing formula: canvas_y = canvas_height - (cad_y * scale + offset_y)
+            # So: cad_y = (canvas_height - canvas_y - offset_y) / scale
+            cad_y = (canvas_height - canvas_y - self.canvas_offset_y) / self.canvas_scale
+        else:
+            cad_x = canvas_x
+            cad_y = canvas_y
+        
+        print(f"Converting click: canvas=({canvas_x:.1f}, {canvas_y:.1f}) -> CAD=({cad_x:.1f}, {cad_y:.1f})")
+        print(f"Canvas scale={self.canvas_scale:.4f}, offset=({self.canvas_offset_x:.1f}, {self.canvas_offset_y:.1f})")
+        
+        # Find closest shape or point
+        closest_shape_idx = None
+        closest_point_idx = None
+        min_dist = float('inf')
+        all_distances = []  # For debugging
+        
+        print(f"Searching through {len(self.shapes)} shapes...")
+        # First, try to find closest point (vertex) - with corner snapping
+        for idx, shape in enumerate(self.shapes):
+            if shape["type"] == "polyline":
+                points = shape.get("points", [])
+                print(f"  Shape {idx}: {len(points)} points")
+                for pt_idx, pt in enumerate(points):
+                    if isinstance(pt, (tuple, list)):
+                        px, py = float(pt[0]), float(pt[1])
+                    elif isinstance(pt, dict):
+                        px, py = float(pt.get("x", 0)), float(pt.get("y", 0))
+                    else:
+                        continue
+                    
+                    dist = ((px - cad_x)**2 + (py - cad_y)**2)**0.5
+                    all_distances.append((idx, pt_idx, dist, px, py))
+                    
+                    # Scale threshold by canvas scale - make it MUCH more forgiving
+                    # Use a larger threshold in CAD units, not screen pixels
+                    if self.snap_to_corner:
+                        # Use 50 CAD units as threshold (much larger)
+                        threshold = 50.0
+                    else:
+                        threshold = 20.0
+                    
+                    if dist < threshold and dist < min_dist:
+                        min_dist = dist
+                        closest_shape_idx = idx
+                        closest_point_idx = pt_idx
+                        print(f"  ✓ Found closer point: shape {idx}, point {pt_idx}, dist={dist:.2f}, threshold={threshold:.2f}")
+        
+        # Show closest points for debugging
+        if all_distances and closest_shape_idx is None:
+            all_distances.sort(key=lambda x: x[2])
+            print(f"  Closest 5 points (none within threshold):")
+            for idx, pt_idx, dist, px, py in all_distances[:5]:
+                print(f"    Shape {idx}, Point {pt_idx}: dist={dist:.2f}, at ({px:.1f}, {py:.1f})")
+        
+        # If no point found, try to find closest line segment
+        if closest_shape_idx is None:
+            print("  No point found, checking line segments...")
+            min_line_dist = float('inf')
+            for idx, shape in enumerate(self.shapes):
+                if shape["type"] == "polyline":
+                    points = shape.get("points", [])
+                    if len(points) < 2:
+                        continue
+                    
+                    # Check each line segment
+                    for i in range(len(points)):
+                        if isinstance(points[i], (tuple, list)):
+                            p1 = (float(points[i][0]), float(points[i][1]))
+                        elif isinstance(points[i], dict):
+                            p1 = (float(points[i].get("x", 0)), float(points[i].get("y", 0)))
+                        else:
+                            continue
+                        
+                        # Get next point (wrap around if closed)
+                        next_i = (i + 1) % len(points) if shape.get("closed", False) else i + 1
+                        if next_i >= len(points):
+                            continue
+                            
+                        if isinstance(points[next_i], (tuple, list)):
+                            p2 = (float(points[next_i][0]), float(points[next_i][1]))
+                        elif isinstance(points[next_i], dict):
+                            p2 = (float(points[next_i].get("x", 0)), float(points[next_i].get("y", 0)))
+                        else:
+                            continue
+                        
+                        # Calculate distance from point to line segment
+                        import math
+                        dx = p2[0] - p1[0]
+                        dy = p2[1] - p1[1]
+                        length_sq = dx*dx + dy*dy
+                        
+                        if length_sq == 0:
+                            continue
+                        
+                        # Project point onto line segment
+                        t = max(0, min(1, ((cad_x - p1[0])*dx + (cad_y - p1[1])*dy) / length_sq))
+                        proj_x = p1[0] + t * dx
+                        proj_y = p1[1] + t * dy
+                        
+                        dist = math.sqrt((cad_x - proj_x)**2 + (cad_y - proj_y)**2)
+                        # Use larger threshold in CAD units
+                        threshold = 30.0
+                        
+                        if dist < threshold and dist < min_line_dist:
+                            min_line_dist = dist
+                            closest_shape_idx = idx
+                            # Use the closer endpoint as the start point
+                            dist1 = math.sqrt((cad_x - p1[0])**2 + (cad_y - p1[1])**2)
+                            dist2 = math.sqrt((cad_x - p2[0])**2 + (cad_y - p2[1])**2)
+                            closest_point_idx = i if dist1 < dist2 else next_i
+                            print(f"  ✓ Found line segment: shape {idx}, segment {i}-{next_i}, dist={dist:.2f}")
+        
+        if closest_shape_idx is not None:
+            print(f"SELECTED: Shape {closest_shape_idx}, Point {closest_point_idx}")
+            self.selected_shape_index = closest_shape_idx
+            shape = self.shapes[closest_shape_idx]
+            point_info = f" at Point {closest_point_idx + 1}" if closest_point_idx is not None else ""
+            self.selected_label.config(text=f"Selected: Shape {closest_shape_idx + 1} ({shape['type']}){point_info}")
+            
+            # Update start point combo with available points
+            if shape["type"] == "polyline":
+                points = shape.get("points", [])
+                point_labels = ["Auto"] + [f"Point {i+1}" for i in range(len(points))]
+                self.start_point_combo['values'] = point_labels
+                self.entry_point_combo['values'] = point_labels
+                self.exit_point_combo['values'] = point_labels
+                
+                # If a specific point was clicked and snapping is enabled, snap to it
+                if closest_point_idx is not None and self.snap_to_corner:
+                    # Snap the click to the nearest corner
+                    snapped_pt = points[closest_point_idx]
+                    if isinstance(snapped_pt, (tuple, list)):
+                        snapped_x, snapped_y = float(snapped_pt[0]), float(snapped_pt[1])
+                    elif isinstance(snapped_pt, dict):
+                        snapped_x, snapped_y = float(snapped_pt.get("x", 0)), float(snapped_pt.get("y", 0))
+                    
+                    # Set as start point
+                    shape["start_index"] = closest_point_idx
+                    self.start_point_var.set(f"Point {closest_point_idx + 1}")
+                else:
+                    current_start = shape.get("start_index")
+                    if current_start is not None:
+                        self.start_point_var.set(f"Point {current_start + 1}")
+                    else:
+                        self.start_point_var.set("Auto")
+                self.start_point_combo.bind("<<ComboboxSelected>>", self.on_start_point_changed)
+                
+                # Update entry/exit points
+                entry_idx = shape.get("entry_index")
+                if entry_idx is not None:
+                    self.entry_point_var.set(f"Point {entry_idx + 1}")
+                else:
+                    self.entry_point_var.set("Auto")
+                
+                exit_idx = shape.get("exit_index")
+                if exit_idx is not None:
+                    self.exit_point_var.set(f"Point {exit_idx + 1}")
+                else:
+                    self.exit_point_var.set("Auto")
+            
+            # Update direction
+            current_dir = shape.get("clockwise")
+            if current_dir is True:
+                self.direction_var.set("Clockwise")
+            elif current_dir is False:
+                self.direction_var.set("Counter-Clockwise")
+            else:
+                self.direction_var.set("Auto")
+            
+            self.update_shapes_list()  # Redraw with selection
+        else:
+            # No shape found - clear selection
+            print(f"NO SHAPE FOUND near click point ({cad_x:.1f}, {cad_y:.1f})")
+            self.selected_shape_index = None
+            self.selected_label.config(text=f"Selected: None (clicked at {cad_x:.1f}, {cad_y:.1f})")
+            self.start_point_var.set("Auto")
+            self.direction_var.set("Auto")
+            self.entry_point_var.set("Auto")
+            self.exit_point_var.set("Auto")
+    
+    def on_start_point_changed(self, event=None):
+        """Handle start point selection change"""
+        if self.selected_shape_index is None:
+            return
+        
+        shape = self.shapes[self.selected_shape_index]
+        if shape["type"] != "polyline":
+            return
+        
+        selected = self.start_point_var.get()
+        if selected == "Auto":
+            shape["start_index"] = None
+        else:
+            # Extract point number from "Point N"
+            try:
+                point_num = int(selected.split()[-1]) - 1
+                if 0 <= point_num < len(shape.get("points", [])):
+                    shape["start_index"] = point_num
+            except (ValueError, IndexError):
+                pass
+        
+        self.update_shapes_list()
+    
+    def on_direction_changed(self, event=None):
+        """Handle direction selection change"""
+        if self.selected_shape_index is None:
+            return
+        
+        shape = self.shapes[self.selected_shape_index]
+        if shape["type"] != "polyline" or not shape.get("closed", False):
+            return
+        
+        selected = self.direction_var.get()
+        if selected == "Auto":
+            shape["clockwise"] = None
+        elif selected == "Clockwise":
+            shape["clockwise"] = True
+        elif selected == "Counter-Clockwise":
+            shape["clockwise"] = False
+        
+        self.update_shapes_list()
+    
+    def on_entry_point_changed(self, event=None):
+        """Handle entry point selection change"""
+        if self.selected_shape_index is None:
+            return
+        
+        shape = self.shapes[self.selected_shape_index]
+        if shape["type"] != "polyline":
+            return
+        
+        selected = self.entry_point_var.get()
+        if selected == "Auto":
+            shape["entry_index"] = None
+        else:
+            try:
+                point_num = int(selected.split()[-1]) - 1
+                if 0 <= point_num < len(shape.get("points", [])):
+                    shape["entry_index"] = point_num
+            except (ValueError, IndexError):
+                pass
+        
+        self.update_shapes_list()
+    
+    def on_exit_point_changed(self, event=None):
+        """Handle exit point selection change"""
+        if self.selected_shape_index is None:
+            return
+        
+        shape = self.shapes[self.selected_shape_index]
+        if shape["type"] != "polyline":
+            return
+        
+        selected = self.exit_point_var.get()
+        if selected == "Auto":
+            shape["exit_index"] = None
+        else:
+            try:
+                point_num = int(selected.split()[-1]) - 1
+                if 0 <= point_num < len(shape.get("points", [])):
+                    shape["exit_index"] = point_num
+            except (ValueError, IndexError):
+                pass
+        
+        self.update_shapes_list()
+    
     def save_gcode(self):
         if not hasattr(self, 'current_gcode'):
             messagebox.showwarning("Warning", "Please generate G-code first.")

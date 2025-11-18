@@ -127,11 +127,48 @@ class GCodeGenerator:
         self.current_y = y
         
     def cut_contour(self, points: List[Tuple[float, float]], 
-                   closed: bool = True, depth: float = 0.0):
-        """Cut a 2D contour"""
+                   closed: bool = True, depth: float = 0.0,
+                   start_index: Optional[int] = None,
+                   clockwise: Optional[bool] = None):
+        """Cut a 2D contour
+        
+        Args:
+            points: List of (x, y) tuples
+            closed: Whether the contour is closed
+            depth: Cutting depth
+            start_index: Index of point to start from (None = use first point)
+            clockwise: Direction for closed shapes (None = auto, True = clockwise, False = counter-clockwise)
+        """
         if not points:
             return
+        
+        # Determine start point
+        if start_index is not None and 0 <= start_index < len(points):
+            start_idx = start_index
+        else:
+            start_idx = 0
+        
+        # Reorder points to start from specified index
+        if start_idx > 0:
+            points = points[start_idx:] + points[:start_idx]
+        
+        # Reverse direction if needed (for closed shapes)
+        if closed and len(points) > 2 and clockwise is not None:
+            # Calculate signed area to determine natural direction
+            # Positive area = counter-clockwise, negative = clockwise
+            area = 0.0
+            for i in range(len(points)):
+                j = (i + 1) % len(points)
+                area += points[i][0] * points[j][1]
+                area -= points[j][0] * points[i][1]
             
+            is_naturally_clockwise = area < 0
+            
+            # If requested direction doesn't match natural direction, reverse
+            if clockwise != is_naturally_clockwise:
+                # Reverse all points except the first
+                points = [points[0]] + list(reversed(points[1:]))
+        
         # Move to start position
         start_x, start_y = points[0]
         self.rapid_move(x=start_x, y=start_y)
@@ -247,8 +284,13 @@ class GCodeGenerator:
         self.add_line("")
         
     def generate_from_shapes(self, shapes: List[dict], depth: float = 0.0):
-        """Generate G-code from shape dictionary (from CAD viewer)"""
-        for shape in shapes:
+        """Generate G-code from shape dictionary (from CAD viewer)
+        
+        Connects shapes using entry/exit points if specified.
+        """
+        prev_exit_point = None
+        
+        for i, shape in enumerate(shapes):
             shape_type = shape.get("type")
 
             if shape_type == "line":
@@ -288,7 +330,30 @@ class GCodeGenerator:
                         points.append((pt[0], pt[1]))
                 if points:
                     closed = shape.get("closed", True)
-                    self.cut_contour(points, closed=closed, depth=depth)
+                    start_index = shape.get("start_index", None)
+                    clockwise = shape.get("clockwise", None)
+                    entry_index = shape.get("entry_index", None)
+                    exit_index = shape.get("exit_index", None)
+                    
+                    # Get entry/exit points
+                    entry_point = points[entry_index] if entry_index is not None and 0 <= entry_index < len(points) else None
+                    exit_point = points[exit_index] if exit_index is not None and 0 <= exit_index < len(points) else None
+                    
+                    # Connect from previous shape's exit to this shape's entry
+                    if i > 0 and prev_exit_point is not None and entry_point is not None:
+                        # Move from previous exit to this entry (bridge)
+                        self.add_line(f"; Bridge from shape {i} to shape {i+1}")
+                        self.rapid_move(z=self.safety_height)
+                        self.rapid_move(x=prev_exit_point[0], y=prev_exit_point[1])
+                        self.rapid_move(z=depth)
+                        self.linear_move(x=entry_point[0], y=entry_point[1], z=depth)
+                        self.add_line("")
+                    
+                    self.cut_contour(points, closed=closed, depth=depth,
+                                    start_index=start_index, clockwise=clockwise)
+                    
+                    # Store exit point for next shape
+                    prev_exit_point = exit_point
 
         self.add_line("")
         
