@@ -156,9 +156,19 @@ class ModernCADToGCodeConverter:
         self.canvas.bind("<ButtonPress-2>", self.on_pan_start)  # Middle mouse button
         self.canvas.bind("<B2-Motion>", self.on_pan_move)
         self.canvas.bind("<ButtonRelease-2>", self.on_pan_end)
-        self.canvas.bind("<MouseWheel>", self.on_mousewheel)  # Windows/Linux
-        self.canvas.bind("<Button-4>", self.on_mousewheel)  # Linux scroll up
-        self.canvas.bind("<Button-5>", self.on_mousewheel)  # Linux scroll down
+        
+        # Mouse wheel - platform-specific bindings
+        import sys
+        if sys.platform == "win32":
+            # Windows uses MouseWheel
+            self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        elif sys.platform == "darwin":
+            # macOS uses MouseWheel with different event.delta
+            self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        else:
+            # Linux uses Button-4 and Button-5
+            self.canvas.bind("<Button-4>", self.on_mousewheel)
+            self.canvas.bind("<Button-5>", self.on_mousewheel)
         
         # Enable corner snapping
         self.snap_to_corner = True
@@ -316,11 +326,26 @@ class ModernCADToGCodeConverter:
         self.status_label.config(text="Fitted to window")
         
     def on_mousewheel(self, event):
-        """Handle mouse wheel zoom"""
-        if event.delta > 0 or event.num == 4:
-            self.zoom_in()
+        """Handle mouse wheel zoom - cross-platform"""
+        import sys
+        if sys.platform == "win32":
+            # Windows: event.delta is positive for up, negative for down
+            if event.delta > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
+        elif sys.platform == "darwin":
+            # macOS: event.delta is positive for up, negative for down
+            if event.delta > 0:
+                self.zoom_in()
+            else:
+                self.zoom_out()
         else:
-            self.zoom_out()
+            # Linux: event.num is 4 for up, 5 for down
+            if event.num == 4:
+                self.zoom_in()
+            else:
+                self.zoom_out()
             
     def on_pan_start(self, event):
         """Start panning"""

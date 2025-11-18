@@ -13,5 +13,6 @@ fontTools>=4.0.0
 # For testing (development)
 pytest>=7.0.0
 
-# Note: tkinter comes with Python on macOS, no need to install separately
+# Note: tkinter comes with Python on macOS, Windows, and most Linux distributions
+# On some Linux systems, you may need to install: sudo apt-get install python3-tk
 

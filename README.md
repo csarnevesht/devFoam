@@ -24,13 +24,25 @@ The code has been reorganized into a clean `src/` directory structure. See [PROJ
 
 ## Installation
 
+### Prerequisites
+
+**First-time setup?** See the detailed [Installation Guide](docs/INSTALLATION.md) for:
+- Installing Python 3 on macOS and Windows
+- Installing pip3
+- Installing tkinter (GUI library)
+- Troubleshooting common issues
+
+### Quick Start (if Python 3 is already installed)
+
 ```bash
 # Install dependencies
 pip3 install -r requirements.txt
 
-# Make GUI launcher executable
+# Make GUI launcher executable (macOS/Linux only)
 chmod +x devfoam-gui
 ```
+
+**Note**: On Windows, use `python` and `pip` instead of `python3` and `pip3`.
 
 ## Usage
 
