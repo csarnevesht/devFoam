@@ -1,0 +1,11 @@
+# CAD Viewer/Editor Requirements
+# Install with: pip3 install -r requirements.txt
+
+# For DXF file support (optional but recommended)
+ezdxf>=1.0.0
+
+# For SVG file support (optional)
+svg.path>=1.5.0
+
+# Note: tkinter comes with Python on macOS, no need to install separately
+
