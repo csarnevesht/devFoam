@@ -1,0 +1,59 @@
+{
+  "shapes": [
+    {
+      "type": "line",
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 150
+    },
+    {
+      "type": "line",
+      "x1": 0,
+      "y1": 0,
+      "x2": 400,
+      "y2": 0
+    },
+    {
+      "type": "line",
+      "x1": 400,
+      "y1": 0,
+      "x2": 400,
+      "y2": 150
+    },
+    {
+      "type": "line",
+      "x1": 0,
+      "y1": 150,
+      "x2": 400,
+      "y2": 150
+    },
+    {
+      "type": "arc",
+      "cx": 200,
+      "cy": 75,
+      "radius": 180,
+      "start_angle": 0,
+      "end_angle": 180
+    },
+    {
+      "type": "circle",
+      "cx": 200,
+      "cy": 75,
+      "radius": 50
+    },
+    {
+      "type": "circle",
+      "cx": 100,
+      "cy": 75,
+      "radius": 20
+    },
+    {
+      "type": "circle",
+      "cx": 300,
+      "cy": 75,
+      "radius": 20
+    }
+  ]
+}
+

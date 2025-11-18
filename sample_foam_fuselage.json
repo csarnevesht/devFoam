@@ -1,0 +1,44 @@
+{
+  "shapes": [
+    {
+      "type": "rectangle",
+      "x1": 0,
+      "y1": 0,
+      "x2": 300,
+      "y2": 80
+    },
+    {
+      "type": "circle",
+      "cx": 50,
+      "cy": 40,
+      "radius": 25
+    },
+    {
+      "type": "circle",
+      "cx": 150,
+      "cy": 40,
+      "radius": 30
+    },
+    {
+      "type": "circle",
+      "cx": 250,
+      "cy": 40,
+      "radius": 20
+    },
+    {
+      "type": "line",
+      "x1": 0,
+      "y1": 40,
+      "x2": 300,
+      "y2": 40
+    },
+    {
+      "type": "rectangle",
+      "x1": 100,
+      "y1": 20,
+      "x2": 200,
+      "y2": 60
+    }
+  ]
+}
+

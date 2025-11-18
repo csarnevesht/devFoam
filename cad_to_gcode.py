@@ -41,10 +41,27 @@ class CADToGCodeConverter:
         self.file_label = ttk.Label(left_panel, text="No file loaded")
         self.file_label.pack(pady=5)
         
-        # Shapes list
-        ttk.Label(left_panel, text="Shapes:").pack(anchor=tk.W, pady=(10, 5))
-        self.shapes_listbox = tk.Listbox(left_panel, height=10)
-        self.shapes_listbox.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Visual canvas for shapes
+        ttk.Label(left_panel, text="Preview:").pack(anchor=tk.W, pady=(10, 5))
+        canvas_frame = ttk.Frame(left_panel)
+        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.canvas = tk.Canvas(canvas_frame, bg="white", width=400, height=300)
+        v_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
+        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        
+        self.canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
+        
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        v_scrollbar.grid(row=0, column=1, sticky="ns")
+        h_scrollbar.grid(row=1, column=0, sticky="ew")
+        
+        canvas_frame.grid_rowconfigure(0, weight=1)
+        canvas_frame.grid_columnconfigure(0, weight=1)
+        
+        # Shape count label
+        self.shape_count_label = ttk.Label(left_panel, text="Shapes: 0")
+        self.shape_count_label.pack(pady=5)
         
         # Right panel - G-code settings
         right_panel = ttk.LabelFrame(main_frame, text="G-code Settings", padding="10")
@@ -126,6 +143,8 @@ class CADToGCodeConverter:
                     
                 self.file_label.config(text=f"Loaded: {os.path.basename(filename)}")
                 self.update_shapes_list()
+                # Force canvas to update after file load
+                self.root.update_idletasks()
                 messagebox.showinfo("Success", f"Loaded {len(self.shapes)} shapes")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load file: {str(e)}")
@@ -172,10 +191,115 @@ class CADToGCodeConverter:
                     })
                     
     def update_shapes_list(self):
-        self.shapes_listbox.delete(0, tk.END)
-        for i, shape in enumerate(self.shapes):
-            shape_type = shape.get("type", "unknown")
-            self.shapes_listbox.insert(tk.END, f"{i+1}. {shape_type}")
+        """Update the visual canvas with shapes"""
+        self.canvas.delete("all")
+        
+        if not self.shapes:
+            self.shape_count_label.config(text="Shapes: 0")
+            return
+            
+        # Calculate bounding box for auto-fit
+        all_x = []
+        all_y = []
+        for shape in self.shapes:
+            if shape["type"] == "line":
+                all_x.extend([shape["x1"], shape["x2"]])
+                all_y.extend([shape["y1"], shape["y2"]])
+            elif shape["type"] == "circle":
+                all_x.extend([shape["cx"] - shape["radius"], shape["cx"] + shape["radius"]])
+                all_y.extend([shape["cy"] - shape["radius"], shape["cy"] + shape["radius"]])
+            elif shape["type"] == "rectangle":
+                all_x.extend([shape["x1"], shape["x2"]])
+                all_y.extend([shape["y1"], shape["y2"]])
+            elif shape["type"] == "arc":
+                all_x.extend([shape["cx"] - shape["radius"], shape["cx"] + shape["radius"]])
+                all_y.extend([shape["cy"] - shape["radius"], shape["cy"] + shape["radius"]])
+            elif shape["type"] == "polyline":
+                for x, y in shape["points"]:
+                    all_x.append(x)
+                    all_y.append(y)
+                    
+        if all_x and all_y:
+            min_x, max_x = min(all_x), max(all_x)
+            min_y, max_y = min(all_y), max(all_y)
+            width = max_x - min_x
+            height = max_y - min_y
+            
+            # Add padding
+            padding = max(width, height) * 0.1
+            min_x -= padding
+            min_y -= padding
+            width += 2 * padding
+            height += 2 * padding
+            
+            # Calculate scale to fit canvas
+            canvas_width = self.canvas.winfo_width() or 400
+            canvas_height = self.canvas.winfo_height() or 300
+            
+            if width > 0 and height > 0:
+                scale_x = (canvas_width - 20) / width
+                scale_y = (canvas_height - 20) / height
+                scale = min(scale_x, scale_y, 1.0)  # Don't scale up
+                
+                offset_x = -min_x * scale + (canvas_width - width * scale) / 2
+                offset_y = -min_y * scale + (canvas_height - height * scale) / 2
+            else:
+                scale = 1.0
+                offset_x = 0
+                offset_y = 0
+        else:
+            scale = 1.0
+            offset_x = 0
+            offset_y = 0
+            
+        # Draw shapes
+        for shape in self.shapes:
+            if shape["type"] == "line":
+                x1 = shape["x1"] * scale + offset_x
+                y1 = shape["y1"] * scale + offset_y
+                x2 = shape["x2"] * scale + offset_x
+                y2 = shape["y2"] * scale + offset_y
+                self.canvas.create_line(x1, y1, x2, y2, fill="black", width=2)
+                
+            elif shape["type"] == "circle":
+                cx = shape["cx"] * scale + offset_x
+                cy = shape["cy"] * scale + offset_y
+                r = shape["radius"] * scale
+                self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
+                                       outline="black", width=2)
+                                       
+            elif shape["type"] == "rectangle":
+                x1 = shape["x1"] * scale + offset_x
+                y1 = shape["y1"] * scale + offset_y
+                x2 = shape["x2"] * scale + offset_x
+                y2 = shape["y2"] * scale + offset_y
+                self.canvas.create_rectangle(x1, y1, x2, y2,
+                                           outline="black", width=2)
+                                           
+            elif shape["type"] == "arc":
+                cx = shape["cx"] * scale + offset_x
+                cy = shape["cy"] * scale + offset_y
+                r = shape["radius"] * scale
+                start_angle = shape.get("start_angle", 0)
+                end_angle = shape.get("end_angle", 180)
+                extent = end_angle - start_angle
+                self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
+                                      start=start_angle, extent=extent,
+                                      outline="black", width=2, style=tk.ARC)
+                                      
+            elif shape["type"] == "polyline":
+                points = []
+                for x, y in shape["points"]:
+                    points.extend([x * scale + offset_x, y * scale + offset_y])
+                if len(points) >= 4:
+                    self.canvas.create_line(*points, fill="black", width=2)
+        
+        # Update scroll region
+        self.canvas.update_idletasks()
+        self.canvas.config(scrollregion=self.canvas.bbox("all"))
+        
+        # Update shape count
+        self.shape_count_label.config(text=f"Shapes: {len(self.shapes)}")
             
     def generate_gcode(self):
         if not self.shapes:
