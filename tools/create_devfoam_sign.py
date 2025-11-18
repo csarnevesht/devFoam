@@ -311,4 +311,4 @@ def draw_letter_manual(msp, letter, x, y, width, height):
 
 if __name__ == "__main__":
     create_devfoam_sign("devfoam_sign.dxf")
-    print("\n✅ Sign created! Open in CAD viewer to see the result.")
+    print("\n✅ Sign created! Open in cad_to_gcode.py to view and generate G-code.")

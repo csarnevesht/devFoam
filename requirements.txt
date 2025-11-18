@@ -1,11 +1,17 @@
-# CAD Viewer/Editor Requirements
+# CAD to G-code Converter Requirements
 # Install with: pip3 install -r requirements.txt
 
-# For DXF file support (optional but recommended)
+# For DXF file support (required for DXF import/export)
 ezdxf>=1.0.0
 
 # For SVG file support (optional)
 svg.path>=1.5.0
+
+# For font rendering in sign generation (optional)
+fontTools>=4.0.0
+
+# For testing (development)
+pytest>=7.0.0
 
 # Note: tkinter comes with Python on macOS, no need to install separately
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
 CAD to G-code Converter
-Integrates CAD viewer with G-code generator for foam cutting
+Integrated CAD viewer and G-code generator for foam cutting
 """
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
 import os
-from gcode_generator import GCodeGenerator
+from .gcode_generator import GCodeGenerator
 
 try:
     import ezdxf
@@ -133,10 +133,20 @@ class CADToGCodeConverter:
         right_panel = ttk.LabelFrame(main_frame, text="G-code Settings", padding="10")
         right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
         
-        # Feed rate
-        ttk.Label(right_panel, text="Feed Rate (mm/min):").pack(anchor=tk.W, pady=5)
+        # Feed rate (cutting)
+        ttk.Label(right_panel, text="Cutting Feed Rate (mm/min):").pack(anchor=tk.W, pady=5)
         self.feed_rate_var = tk.StringVar(value="100")
         ttk.Entry(right_panel, textvariable=self.feed_rate_var, width=15).pack(anchor=tk.W, pady=5)
+        
+        # Plunge rate
+        ttk.Label(right_panel, text="Plunge Feed Rate (mm/min):").pack(anchor=tk.W, pady=5)
+        self.plunge_rate_var = tk.StringVar(value="50")
+        ttk.Entry(right_panel, textvariable=self.plunge_rate_var, width=15).pack(anchor=tk.W, pady=5)
+        
+        # Tool radius (for offsetting)
+        ttk.Label(right_panel, text="Tool Radius (mm):").pack(anchor=tk.W, pady=5)
+        self.tool_radius_var = tk.StringVar(value="0")
+        ttk.Entry(right_panel, textvariable=self.tool_radius_var, width=15).pack(anchor=tk.W, pady=5)
         
         # Cut depth
         ttk.Label(right_panel, text="Cut Depth (mm):").pack(anchor=tk.W, pady=5)
@@ -147,6 +157,16 @@ class CADToGCodeConverter:
         ttk.Label(right_panel, text="Safety Height (mm):").pack(anchor=tk.W, pady=5)
         self.safety_height_var = tk.StringVar(value="10")
         ttk.Entry(right_panel, textvariable=self.safety_height_var, width=15).pack(anchor=tk.W, pady=5)
+        
+        # Curve tolerance
+        ttk.Label(right_panel, text="Curve Tolerance (mm):").pack(anchor=tk.W, pady=5)
+        self.curve_tolerance_var = tk.StringVar(value="0.1")
+        ttk.Entry(right_panel, textvariable=self.curve_tolerance_var, width=15).pack(anchor=tk.W, pady=5)
+        
+        # Lead-in/lead-out length
+        ttk.Label(right_panel, text="Lead-in/out Length (mm):").pack(anchor=tk.W, pady=5)
+        self.lead_in_var = tk.StringVar(value="2.0")
+        ttk.Entry(right_panel, textvariable=self.lead_in_var, width=15).pack(anchor=tk.W, pady=5)
         
         # Units
         ttk.Label(right_panel, text="Units:").pack(anchor=tk.W, pady=5)
@@ -601,8 +621,12 @@ class CADToGCodeConverter:
         try:
             # Get settings
             feed_rate = float(self.feed_rate_var.get())
+            plunge_rate = float(self.plunge_rate_var.get())
+            tool_radius = float(self.tool_radius_var.get())
             depth = float(self.depth_var.get())
             safety_height = float(self.safety_height_var.get())
+            curve_tolerance = float(self.curve_tolerance_var.get())
+            lead_in_length = float(self.lead_in_var.get())
             units = self.units_var.get()
             temp = float(self.temp_var.get())
             
@@ -612,6 +636,8 @@ class CADToGCodeConverter:
             gen.set_feed_rate(feed_rate)
             gen.set_safety_height(safety_height)
             gen.set_wire_temp(temp)
+            # Note: plunge_rate, tool_radius, curve_tolerance, and lead_in_length
+            # are no longer supported in the simplified gcode_generator.py
             
             # Generate G-code
             gen.header("Foam Cutting from CAD File")
