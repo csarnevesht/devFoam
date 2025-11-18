@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CAD to G-code Converter
+CAD to G-code Converter - Modern UI
 Integrated CAD viewer and G-code generator for foam cutting
 """
 
@@ -8,6 +8,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
 import os
+import math
 from .gcode_generator import GCodeGenerator
 
 try:
@@ -17,200 +18,342 @@ except ImportError:
     HAS_EZDXF = False
 
 
-class CADToGCodeConverter:
+class ModernCADToGCodeConverter:
     def __init__(self, root):
         self.root = root
-        self.root.title("CAD to G-code Converter - Foam Cutting")
-        self.root.geometry("1000x700")
+        self.root.title("DevFoam - CAD to G-code Converter")
+        self.root.geometry("1400x900")
+        self.root.configure(bg="#f0f0f0")
         
+        # State variables
         self.shapes = []
         self.selected_shape_index = None
         self.edit_mode = False
         self.canvas_scale = 1.0
         self.canvas_offset_x = 0.0
         self.canvas_offset_y = 0.0
-        self.setup_ui()
+        self.snap_to_corner = True
+        self.zoom_level = 1.0
+        self.pan_start_x = 0
+        self.pan_start_y = 0
+        self.is_panning = False
         
-    def setup_ui(self):
-        # Main frame
-        main_frame = ttk.Frame(self.root, padding="10")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Create modern UI
+        self.setup_modern_ui()
         
-        # Left panel - CAD file info
-        left_panel = ttk.LabelFrame(main_frame, text="CAD File", padding="10")
-        left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+    def setup_modern_ui(self):
+        """Create modern UI with toolbar, tabs, and status bar"""
         
-        ttk.Button(left_panel, text="Load CAD File", 
-                  command=self.load_cad_file).pack(pady=5)
+        # Top toolbar
+        toolbar = tk.Frame(self.root, bg="#2c3e50", height=50)
+        toolbar.pack(side=tk.TOP, fill=tk.X)
+        toolbar.pack_propagate(False)
         
-        self.file_label = ttk.Label(left_panel, text="No file loaded")
-        self.file_label.pack(pady=5)
+        # Toolbar buttons - use dark text on light buttons for visibility
+        btn_style = {"bg": "#ecf0f1", "fg": "#2c3e50", "relief": tk.RAISED, "bd": 1, 
+                     "padx": 15, "pady": 8, "font": ("Arial", 10, "bold")}
+        tk.Button(toolbar, text="📁 Load CAD", command=self.load_cad_file, **btn_style).pack(side=tk.LEFT, padx=5)
+        tk.Button(toolbar, text="💾 Save G-code", command=self.save_gcode, **btn_style).pack(side=tk.LEFT, padx=5)
+        tk.Button(toolbar, text="⚙️ Generate", command=self.generate_gcode, **btn_style).pack(side=tk.LEFT, padx=5)
         
-        # Visual canvas for shapes
-        ttk.Label(left_panel, text="Preview:").pack(anchor=tk.W, pady=(10, 5))
-        canvas_frame = ttk.Frame(left_panel)
-        canvas_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        # Separator
+        tk.Frame(toolbar, bg="#34495e", width=2).pack(side=tk.LEFT, fill=tk.Y, padx=10, pady=5)
         
-        self.canvas = tk.Canvas(canvas_frame, bg="white", width=400, height=300)
-        v_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.VERTICAL, command=self.canvas.yview)
-        h_scrollbar = ttk.Scrollbar(canvas_frame, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        # Canvas controls
+        tk.Label(toolbar, text="Canvas:", bg="#2c3e50", fg="#ecf0f1", font=("Arial", 9, "bold")).pack(side=tk.LEFT, padx=5)
+        canvas_btn_style = {"bg": "#ecf0f1", "fg": "#2c3e50", "relief": tk.RAISED, "bd": 1, 
+                           "padx": 10, "pady": 6, "font": ("Arial", 9, "bold")}
+        tk.Button(toolbar, text="🔍+", command=self.zoom_in, **canvas_btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(toolbar, text="🔍-", command=self.zoom_out, **canvas_btn_style).pack(side=tk.LEFT, padx=2)
+        tk.Button(toolbar, text="⌂ Fit", command=self.fit_to_window, **canvas_btn_style).pack(side=tk.LEFT, padx=2)
         
-        self.canvas.configure(yscrollcommand=v_scrollbar.set, xscrollcommand=h_scrollbar.set)
-        
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        v_scrollbar.grid(row=0, column=1, sticky="ns")
-        h_scrollbar.grid(row=1, column=0, sticky="ew")
-        
-        canvas_frame.grid_rowconfigure(0, weight=1)
-        canvas_frame.grid_columnconfigure(0, weight=1)
-        
-        # Shape count label
-        self.shape_count_label = ttk.Label(left_panel, text="Shapes: 0")
-        self.shape_count_label.pack(pady=5)
-        
-        # Edit mode controls
-        edit_frame = ttk.LabelFrame(left_panel, text="Path Control", padding="5")
-        edit_frame.pack(fill=tk.X, pady=5)
-        
+        # Edit mode toggle - make it more prominent and visible
+        tk.Frame(toolbar, bg="#34495e", width=2).pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=5)
         self.edit_mode_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(edit_frame, text="Edit Mode (Click shapes to configure)", 
-                       variable=self.edit_mode_var,
-                       command=self.toggle_edit_mode).pack(anchor=tk.W, pady=2)
+        # Use a bright, visible color for the text
+        edit_btn = tk.Checkbutton(toolbar, text="✏️ Edit Mode (Click shapes to configure)", 
+                                 variable=self.edit_mode_var,
+                                 command=self.toggle_edit_mode, 
+                                 bg="#2c3e50", 
+                                 fg="#ecf0f1",  # Light gray instead of white for better visibility
+                                 selectcolor="#e74c3c", 
+                                 font=("Arial", 10, "bold"),
+                                 activebackground="#2c3e50", 
+                                 activeforeground="#ecf0f1",
+                                 highlightthickness=0)  # Remove highlight border
+        edit_btn.pack(side=tk.RIGHT, padx=10)
         
-        self.selected_label = ttk.Label(edit_frame, text="Selected: None")
-        self.selected_label.pack(anchor=tk.W, pady=2)
+        # Main container with paned windows
+        main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
+        main_paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Start point controls
-        start_frame = ttk.Frame(edit_frame)
-        start_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(start_frame, text="Start Point:").pack(side=tk.LEFT, padx=5)
+        # Left pane - CAD viewer and controls
+        left_pane = ttk.Frame(main_paned)
+        main_paned.add(left_pane, weight=2)
+        
+        # Right pane - Settings and preview
+        right_pane = ttk.Frame(main_paned)
+        main_paned.add(right_pane, weight=1)
+        
+        # Setup left pane (CAD viewer)
+        self.setup_cad_viewer(left_pane)
+        
+        # Setup right pane (Settings and preview)
+        self.setup_settings_panel(right_pane)
+        
+        # Status bar
+        self.status_bar = tk.Frame(self.root, bg="#34495e", height=25)
+        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
+        self.status_bar.pack_propagate(False)
+        
+        self.status_label = tk.Label(self.status_bar, text="Ready", bg="#34495e", fg="#ecf0f1",
+                                    font=("Arial", 9), anchor=tk.W, padx=10)
+        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        self.shape_count_status = tk.Label(self.status_bar, text="Shapes: 0", bg="#34495e", fg="#ecf0f1",
+                                          font=("Arial", 9), padx=10)
+        self.shape_count_status.pack(side=tk.RIGHT)
+        
+    def setup_cad_viewer(self, parent):
+        """Setup CAD viewer with canvas and controls"""
+        
+        # Viewer header
+        viewer_header = tk.Frame(parent, bg="#ecf0f1", height=40)
+        viewer_header.pack(side=tk.TOP, fill=tk.X)
+        viewer_header.pack_propagate(False)
+        
+        tk.Label(viewer_header, text="CAD Preview", bg="#ecf0f1", font=("Arial", 12, "bold"),
+                padx=10).pack(side=tk.LEFT)
+        
+        self.file_label = tk.Label(viewer_header, text="No file loaded", bg="#ecf0f1",
+                                  fg="#7f8c8d", font=("Arial", 9), padx=10)
+        self.file_label.pack(side=tk.RIGHT)
+        
+        # Canvas frame with scrollbars
+        canvas_container = tk.Frame(parent, bg="white", relief=tk.SUNKEN, borderwidth=2)
+        canvas_container.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Canvas
+        self.canvas = tk.Canvas(canvas_container, bg="white", highlightthickness=0)
+        
+        # Scrollbars
+        v_scroll = ttk.Scrollbar(canvas_container, orient=tk.VERTICAL, command=self.canvas.yview)
+        h_scroll = ttk.Scrollbar(canvas_container, orient=tk.HORIZONTAL, command=self.canvas.xview)
+        
+        self.canvas.configure(yscrollcommand=v_scroll.set, xscrollcommand=h_scroll.set)
+        
+        # Grid layout for canvas and scrollbars
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        v_scroll.grid(row=0, column=1, sticky="ns")
+        h_scroll.grid(row=1, column=0, sticky="ew")
+        
+        canvas_container.grid_rowconfigure(0, weight=1)
+        canvas_container.grid_columnconfigure(0, weight=1)
+        
+        # Bind canvas events
+        # Always bind click handler - it will return early if edit mode is off
+        self.canvas.bind("<Button-1>", self.on_canvas_click)
+        self.canvas.bind("<ButtonPress-2>", self.on_pan_start)  # Middle mouse button
+        self.canvas.bind("<B2-Motion>", self.on_pan_move)
+        self.canvas.bind("<ButtonRelease-2>", self.on_pan_end)
+        self.canvas.bind("<MouseWheel>", self.on_mousewheel)  # Windows/Linux
+        self.canvas.bind("<Button-4>", self.on_mousewheel)  # Linux scroll up
+        self.canvas.bind("<Button-5>", self.on_mousewheel)  # Linux scroll down
+        
+        # Enable corner snapping
+        self.snap_to_corner = True
+        
+        # Path control panel (collapsible)
+        self.path_control_frame = ttk.LabelFrame(parent, text="Path Control", padding=10)
+        self.path_control_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Selected shape info
+        self.selected_label = tk.Label(self.path_control_frame, text="Selected: None",
+                                      font=("Arial", 9), anchor=tk.W)
+        self.selected_label.pack(fill=tk.X, pady=5)
+        
+        # Control grid
+        controls_grid = tk.Frame(self.path_control_frame)
+        controls_grid.pack(fill=tk.X)
+        
+        # Start point
+        tk.Label(controls_grid, text="Start Point:", width=12, anchor=tk.W).grid(row=0, column=0, sticky=tk.W, padx=5, pady=3)
         self.start_point_var = tk.StringVar(value="Auto")
-        start_combo = ttk.Combobox(start_frame, textvariable=self.start_point_var, 
-                                  state="readonly", width=15)
-        start_combo.pack(side=tk.LEFT, padx=5)
-        self.start_point_combo = start_combo
+        self.start_point_combo = ttk.Combobox(controls_grid, textvariable=self.start_point_var,
+                                             state="readonly", width=18)
+        self.start_point_combo.grid(row=0, column=1, padx=5, pady=3)
+        self.start_point_combo.bind("<<ComboboxSelected>>", self.on_start_point_changed)
         
-        # Direction controls
-        dir_frame = ttk.Frame(edit_frame)
-        dir_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(dir_frame, text="Direction:").pack(side=tk.LEFT, padx=5)
+        # Direction
+        tk.Label(controls_grid, text="Direction:", width=12, anchor=tk.W).grid(row=0, column=2, sticky=tk.W, padx=5, pady=3)
         self.direction_var = tk.StringVar(value="Auto")
-        dir_combo = ttk.Combobox(dir_frame, textvariable=self.direction_var,
+        dir_combo = ttk.Combobox(controls_grid, textvariable=self.direction_var,
                                 values=["Auto", "Clockwise", "Counter-Clockwise"],
-                                state="readonly", width=15)
-        dir_combo.pack(side=tk.LEFT, padx=5)
+                                state="readonly", width=18)
+        dir_combo.grid(row=0, column=3, padx=5, pady=3)
         dir_combo.bind("<<ComboboxSelected>>", self.on_direction_changed)
         
-        # Entry/Exit point controls
-        entry_frame = ttk.Frame(edit_frame)
-        entry_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(entry_frame, text="Entry Point:").pack(side=tk.LEFT, padx=5)
+        # Entry point
+        tk.Label(controls_grid, text="Entry Point:", width=12, anchor=tk.W).grid(row=1, column=0, sticky=tk.W, padx=5, pady=3)
         self.entry_point_var = tk.StringVar(value="Auto")
-        entry_combo = ttk.Combobox(entry_frame, textvariable=self.entry_point_var,
-                                  state="readonly", width=15)
-        entry_combo.pack(side=tk.LEFT, padx=5)
-        self.entry_point_combo = entry_combo
-        entry_combo.bind("<<ComboboxSelected>>", self.on_entry_point_changed)
+        self.entry_point_combo = ttk.Combobox(controls_grid, textvariable=self.entry_point_var,
+                                             state="readonly", width=18)
+        self.entry_point_combo.grid(row=1, column=1, padx=5, pady=3)
+        self.entry_point_combo.bind("<<ComboboxSelected>>", self.on_entry_point_changed)
         
-        exit_frame = ttk.Frame(edit_frame)
-        exit_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(exit_frame, text="Exit Point:").pack(side=tk.LEFT, padx=5)
+        # Exit point
+        tk.Label(controls_grid, text="Exit Point:", width=12, anchor=tk.W).grid(row=1, column=2, sticky=tk.W, padx=5, pady=3)
         self.exit_point_var = tk.StringVar(value="Auto")
-        exit_combo = ttk.Combobox(exit_frame, textvariable=self.exit_point_var,
-                                 state="readonly", width=15)
-        exit_combo.pack(side=tk.LEFT, padx=5)
-        self.exit_point_combo = exit_combo
-        exit_combo.bind("<<ComboboxSelected>>", self.on_exit_point_changed)
+        self.exit_point_combo = ttk.Combobox(controls_grid, textvariable=self.exit_point_var,
+                                            state="readonly", width=18)
+        self.exit_point_combo.grid(row=1, column=3, padx=5, pady=3)
+        self.exit_point_combo.bind("<<ComboboxSelected>>", self.on_exit_point_changed)
         
-        # Bind canvas click - but only when edit mode is enabled
-        # Don't bind here, bind it when edit mode is toggled on
-        self.snap_to_corner = True  # Enable corner snapping
+    def setup_settings_panel(self, parent):
+        """Setup settings panel with tabs"""
         
-        # Test click handler - always bind for testing
-        self.canvas.bind("<Button-1>", self.on_canvas_click)
+        # Create notebook for tabs
+        notebook = ttk.Notebook(parent)
+        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
-        # Right panel - G-code settings
-        right_panel = ttk.LabelFrame(main_frame, text="G-code Settings", padding="10")
-        right_panel.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
+        # Settings tab
+        settings_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(settings_tab, text="⚙️ Settings")
         
-        # Feed rate (cutting)
-        ttk.Label(right_panel, text="Cutting Feed Rate (mm/min):").pack(anchor=tk.W, pady=5)
-        self.feed_rate_var = tk.StringVar(value="100")
-        ttk.Entry(right_panel, textvariable=self.feed_rate_var, width=15).pack(anchor=tk.W, pady=5)
+        # Create scrollable frame for settings
+        settings_canvas = tk.Canvas(settings_tab, highlightthickness=0)
+        settings_scroll = ttk.Scrollbar(settings_tab, orient=tk.VERTICAL, command=settings_canvas.yview)
+        settings_frame = ttk.Frame(settings_canvas)
         
-        # Plunge rate
-        ttk.Label(right_panel, text="Plunge Feed Rate (mm/min):").pack(anchor=tk.W, pady=5)
-        self.plunge_rate_var = tk.StringVar(value="50")
-        ttk.Entry(right_panel, textvariable=self.plunge_rate_var, width=15).pack(anchor=tk.W, pady=5)
+        settings_frame.bind("<Configure>", lambda e: settings_canvas.configure(scrollregion=settings_canvas.bbox("all")))
+        settings_canvas.create_window((0, 0), window=settings_frame, anchor=tk.NW)
+        settings_canvas.configure(yscrollcommand=settings_scroll.set)
         
-        # Tool radius (for offsetting)
-        ttk.Label(right_panel, text="Tool Radius (mm):").pack(anchor=tk.W, pady=5)
-        self.tool_radius_var = tk.StringVar(value="0")
-        ttk.Entry(right_panel, textvariable=self.tool_radius_var, width=15).pack(anchor=tk.W, pady=5)
+        settings_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        settings_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Cut depth
-        ttk.Label(right_panel, text="Cut Depth (mm):").pack(anchor=tk.W, pady=5)
-        self.depth_var = tk.StringVar(value="0")
-        ttk.Entry(right_panel, textvariable=self.depth_var, width=15).pack(anchor=tk.W, pady=5)
+        # Settings fields with modern styling
+        settings_fields = [
+            ("Cutting Feed Rate (mm/min):", "feed_rate_var", "100"),
+            ("Safety Height (mm):", "safety_height_var", "10"),
+            ("Cut Depth (mm):", "depth_var", "0"),
+            ("Wire Temp (°C):", "temp_var", "200"),
+        ]
         
-        # Safety height
-        ttk.Label(right_panel, text="Safety Height (mm):").pack(anchor=tk.W, pady=5)
-        self.safety_height_var = tk.StringVar(value="10")
-        ttk.Entry(right_panel, textvariable=self.safety_height_var, width=15).pack(anchor=tk.W, pady=5)
+        for i, (label_text, var_name, default) in enumerate(settings_fields):
+            frame = tk.Frame(settings_frame, bg="#f8f9fa", relief=tk.FLAT, pady=8)
+            frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            tk.Label(frame, text=label_text, width=25, anchor=tk.W,
+                    font=("Arial", 9), bg="#f8f9fa").pack(side=tk.LEFT, padx=10)
+            
+            var = tk.StringVar(value=default)
+            setattr(self, var_name, var)
+            entry = ttk.Entry(frame, textvariable=var, width=15, font=("Arial", 10))
+            entry.pack(side=tk.LEFT, padx=5)
         
-        # Curve tolerance
-        ttk.Label(right_panel, text="Curve Tolerance (mm):").pack(anchor=tk.W, pady=5)
-        self.curve_tolerance_var = tk.StringVar(value="0.1")
-        ttk.Entry(right_panel, textvariable=self.curve_tolerance_var, width=15).pack(anchor=tk.W, pady=5)
-        
-        # Lead-in/lead-out length
-        ttk.Label(right_panel, text="Lead-in/out Length (mm):").pack(anchor=tk.W, pady=5)
-        self.lead_in_var = tk.StringVar(value="2.0")
-        ttk.Entry(right_panel, textvariable=self.lead_in_var, width=15).pack(anchor=tk.W, pady=5)
-        
-        # Units
-        ttk.Label(right_panel, text="Units:").pack(anchor=tk.W, pady=5)
+        # Units selector
+        units_frame = tk.Frame(settings_frame, bg="#f8f9fa", relief=tk.FLAT, pady=8)
+        units_frame.pack(fill=tk.X, padx=5, pady=5)
+        tk.Label(units_frame, text="Units:", width=25, anchor=tk.W,
+                font=("Arial", 9), bg="#f8f9fa").pack(side=tk.LEFT, padx=10)
         self.units_var = tk.StringVar(value="mm")
-        units_frame = ttk.Frame(right_panel)
-        units_frame.pack(anchor=tk.W, pady=5)
-        ttk.Radiobutton(units_frame, text="mm", variable=self.units_var, 
-                       value="mm").pack(side=tk.LEFT, padx=5)
-        ttk.Radiobutton(units_frame, text="inches", variable=self.units_var, 
-                       value="inches").pack(side=tk.LEFT, padx=5)
+        units_radio_frame = tk.Frame(units_frame, bg="#f8f9fa")
+        units_radio_frame.pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(units_radio_frame, text="mm", variable=self.units_var, value="mm").pack(side=tk.LEFT, padx=5)
+        ttk.Radiobutton(units_radio_frame, text="inches", variable=self.units_var, value="inches").pack(side=tk.LEFT, padx=5)
         
-        # Wire temperature (optional)
-        ttk.Label(right_panel, text="Wire Temp (optional):").pack(anchor=tk.W, pady=5)
-        self.temp_var = tk.StringVar(value="200")
-        ttk.Entry(right_panel, textvariable=self.temp_var, width=15).pack(anchor=tk.W, pady=5)
+        # Preview tab
+        preview_tab = ttk.Frame(notebook, padding=10)
+        notebook.add(preview_tab, text="📄 G-code Preview")
         
-        # Generate button
-        ttk.Separator(right_panel, orient=tk.HORIZONTAL).pack(fill=tk.X, pady=10)
-        ttk.Button(right_panel, text="Generate G-code", 
-                  command=self.generate_gcode).pack(pady=10)
+        # Preview text with syntax highlighting background
+        preview_header = tk.Frame(preview_tab, bg="#34495e", height=30)
+        preview_header.pack(fill=tk.X)
+        preview_header.pack_propagate(False)
+        tk.Label(preview_header, text="Generated G-code", bg="#34495e", fg="#ecf0f1",
+                font=("Arial", 10, "bold"), padx=10).pack(side=tk.LEFT)
         
-        # Preview area
-        ttk.Label(right_panel, text="G-code Preview:").pack(anchor=tk.W, pady=(10, 5))
-        preview_frame = ttk.Frame(right_panel)
-        preview_frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        preview_text_frame = tk.Frame(preview_tab)
+        preview_text_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
-        self.preview_text = tk.Text(preview_frame, height=10, width=40, wrap=tk.NONE)
-        scrollbar = ttk.Scrollbar(preview_frame, orient=tk.VERTICAL, 
+        self.preview_text = tk.Text(preview_text_frame, wrap=tk.NONE, font=("Courier", 9),
+                                   bg="#2c3e50", fg="#ecf0f1", insertbackground="white",
+                                   selectbackground="#3498db")
+        preview_scroll_v = ttk.Scrollbar(preview_text_frame, orient=tk.VERTICAL,
                                  command=self.preview_text.yview)
-        self.preview_text.configure(yscrollcommand=scrollbar.set)
+        preview_scroll_h = ttk.Scrollbar(preview_text_frame, orient=tk.HORIZONTAL,
+                                        command=self.preview_text.xview)
         
-        self.preview_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.preview_text.configure(yscrollcommand=preview_scroll_v.set,
+                                   xscrollcommand=preview_scroll_h.set)
         
-        # Save button
-        ttk.Button(right_panel, text="Save G-code File", 
-                  command=self.save_gcode).pack(pady=10)
+        self.preview_text.grid(row=0, column=0, sticky="nsew")
+        preview_scroll_v.grid(row=0, column=1, sticky="ns")
+        preview_scroll_h.grid(row=1, column=0, sticky="ew")
+        preview_text_frame.grid_rowconfigure(0, weight=1)
+        preview_text_frame.grid_columnconfigure(0, weight=1)
         
+    # Canvas control methods
+    def zoom_in(self):
+        """Zoom in on canvas"""
+        self.zoom_level *= 1.2
+        self.update_shapes_list()
+        self.status_label.config(text="Zoomed in")
+        
+    def zoom_out(self):
+        """Zoom out on canvas"""
+        self.zoom_level /= 1.2
+        if self.zoom_level < 0.1:
+            self.zoom_level = 0.1
+        self.update_shapes_list()
+        self.status_label.config(text="Zoomed out")
+        
+    def fit_to_window(self):
+        """Fit all shapes to window"""
+        self.zoom_level = 1.0
+        self.update_shapes_list()
+        self.status_label.config(text="Fitted to window")
+        
+    def on_mousewheel(self, event):
+        """Handle mouse wheel zoom"""
+        if event.delta > 0 or event.num == 4:
+            self.zoom_in()
+        else:
+            self.zoom_out()
+            
+    def on_pan_start(self, event):
+        """Start panning"""
+        self.is_panning = True
+        self.pan_start_x = event.x
+        self.pan_start_y = event.y
+        self.canvas.config(cursor="fleur")
+        
+    def on_pan_move(self, event):
+        """Pan canvas"""
+        if self.is_panning:
+            dx = event.x - self.pan_start_x
+            dy = event.y - self.pan_start_y
+            self.canvas.scan_dragto(event.x, event.y, gain=1)
+            self.pan_start_x = event.x
+            self.pan_start_y = event.y
+            
+    def on_pan_end(self, event):
+        """End panning"""
+        self.is_panning = False
+        self.canvas.config(cursor="")
+        
+    # File operations
     def load_cad_file(self):
+        """Load CAD file"""
         filename = filedialog.askopenfilename(
-            filetypes=[("All CAD", "*.dxf *.svg *.json"), 
+            title="Load CAD File",
+            filetypes=[
+                ("All CAD", "*.dxf *.svg *.json"),
                       ("DXF", "*.dxf"), 
                       ("SVG", "*.svg"),
-                      ("JSON", "*.json")]
+                ("JSON", "*.json")
+            ]
         )
         if filename:
             try:
@@ -227,15 +370,17 @@ class CADToGCodeConverter:
                         f"Cannot load {ext} files. Install ezdxf for DXF support.")
                     return
                     
-                self.file_label.config(text=f"Loaded: {os.path.basename(filename)}")
+                self.file_label.config(text=f"📄 {os.path.basename(filename)}")
                 self.update_shapes_list()
-                # Force canvas to update after file load
-                self.root.update_idletasks()
+                self.status_label.config(text=f"Loaded {len(self.shapes)} shapes")
+                self.shape_count_status.config(text=f"Shapes: {len(self.shapes)}")
                 messagebox.showinfo("Success", f"Loaded {len(self.shapes)} shapes")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load file: {str(e)}")
+                self.status_label.config(text=f"Error: {str(e)}")
                 
     def load_dxf(self, filename):
+        """Load DXF file"""
         doc = ezdxf.readfile(filename)
         msp = doc.modelspace()
         self.shapes = []
@@ -254,7 +399,6 @@ class CADToGCodeConverter:
                     "radius": entity.dxf.radius
                 })
             elif entity.dxftype() == "ARC":
-                import math
                 center = entity.dxf.center
                 radius = entity.dxf.radius
                 start_angle = math.degrees(entity.dxf.start_angle)
@@ -267,20 +411,15 @@ class CADToGCodeConverter:
                     "end_angle": end_angle
                 })
             elif entity.dxftype() == "LWPOLYLINE":
-                # Convert polyline to points, handling arc segments
-                import math
                 points = []
-                # get_points() returns tuples: (x, y, start_width, end_width, bulge)
                 pl_points = list(entity.get_points())
                 
                 for i, point_data in enumerate(pl_points):
-                    # Extract x, y from tuple (may be numpy types)
                     x = float(point_data[0])
                     y = float(point_data[1])
                     bulge = float(point_data[4]) if len(point_data) > 4 else 0.0
                     points.append((x, y))
                     
-                    # Check if this segment is an arc (has bulge)
                     if bulge != 0:
                         next_idx = (i + 1) % len(pl_points) if entity.closed else i + 1
                         if next_idx < len(pl_points):
@@ -288,16 +427,12 @@ class CADToGCodeConverter:
                             next_point_data = pl_points[next_idx]
                             p2 = (float(next_point_data[0]), float(next_point_data[1]))
                             
-                            # Calculate arc from bulge
-                            # Bulge = tan(arc_angle / 4)
                             arc_angle = 4 * math.atan(abs(bulge))
                             dist = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
                             if dist > 0 and arc_angle > 0:
                                 radius = dist / (2 * math.sin(arc_angle / 2))
-                                # Calculate arc center (perpendicular to chord midpoint)
                                 mid_x = (p1[0] + p2[0]) / 2
                                 mid_y = (p1[1] + p2[1]) / 2
-                                # Direction perpendicular to chord
                                 dx = p2[0] - p1[0]
                                 dy = p2[1] - p1[1]
                                 perp_dist = radius * math.cos(arc_angle / 2)
@@ -308,7 +443,6 @@ class CADToGCodeConverter:
                                     center_x = mid_x + (perp_dist * (1 if bulge > 0 else -1))
                                     center_y = mid_y
                                 
-                                # Add as separate arc shape
                                 self.shapes.append({
                                     "type": "arc",
                                     "cx": center_x,
@@ -326,22 +460,20 @@ class CADToGCodeConverter:
                     })
                     
     def update_shapes_list(self):
-        """Update the visual canvas with shapes"""
+        """Update canvas with shapes"""
         self.canvas.delete("all")
         
-        # Show edit mode instruction if active
         if self.edit_mode:
             self.canvas.create_text(10, 10, anchor=tk.NW, 
-                                  text="Edit Mode: Click on shapes or points to configure",
-                                  fill="blue", font=("Arial", 10, "bold"))
+                                  text="✏️ Edit Mode: Click shapes to configure",
+                                  fill="#3498db", font=("Arial", 10, "bold"))
         
         if not self.shapes:
-            self.shape_count_label.config(text="Shapes: 0")
+            self.shape_count_status.config(text="Shapes: 0")
             return
             
-        # Calculate bounding box for auto-fit
-        all_x = []
-        all_y = []
+        # Calculate bounding box
+        all_x, all_y = [], []
         for shape in self.shapes:
             if shape["type"] == "line":
                 all_x.extend([shape["x1"], shape["x2"]])
@@ -366,48 +498,52 @@ class CADToGCodeConverter:
             width = max_x - min_x
             height = max_y - min_y
             
-            # Add padding
             padding = max(width, height) * 0.1
             min_x -= padding
             min_y -= padding
             width += 2 * padding
             height += 2 * padding
             
-            # Calculate scale to fit canvas
-            canvas_width = self.canvas.winfo_width() or 400
-            canvas_height = self.canvas.winfo_height() or 300
+            canvas_width = self.canvas.winfo_width() or 800
+            canvas_height = self.canvas.winfo_height() or 600
             
             if width > 0 and height > 0:
                 scale_x = (canvas_width - 20) / width
                 scale_y = (canvas_height - 20) / height
-                scale = min(scale_x, scale_y, 1.0)  # Don't scale up
+                scale = min(scale_x, scale_y, 1.0) * self.zoom_level
                 
                 offset_x = -min_x * scale + (canvas_width - width * scale) / 2
                 offset_y = -min_y * scale + (canvas_height - height * scale) / 2
             else:
-                scale = 1.0
+                scale = 1.0 * self.zoom_level
                 offset_x = 0
                 offset_y = 0
         else:
-            scale = 1.0
+            scale = 1.0 * self.zoom_level
             offset_x = 0
             offset_y = 0
             
-        # Draw shapes (flip Y-axis to match CAD coordinate system)
+        # Draw shapes
+        canvas_height = self.canvas.winfo_height() or 600
         for shape in self.shapes:
+            shape_idx = self.shapes.index(shape)
+            is_selected = (self.edit_mode and shape_idx == self.selected_shape_index)
+            line_color = "#3498db" if is_selected else "#2c3e50"
+            line_width = 3 if is_selected else 2
+            
             if shape["type"] == "line":
                 x1 = shape["x1"] * scale + offset_x
                 y1 = canvas_height - (shape["y1"] * scale + offset_y)
                 x2 = shape["x2"] * scale + offset_x
                 y2 = canvas_height - (shape["y2"] * scale + offset_y)
-                self.canvas.create_line(x1, y1, x2, y2, fill="black", width=2)
+                self.canvas.create_line(x1, y1, x2, y2, fill=line_color, width=line_width)
 
             elif shape["type"] == "circle":
                 cx = shape["cx"] * scale + offset_x
                 cy = canvas_height - (shape["cy"] * scale + offset_y)
                 r = shape["radius"] * scale
                 self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
-                                       outline="black", width=2)
+                                      outline=line_color, width=line_width)
 
             elif shape["type"] == "rectangle":
                 x1 = shape["x1"] * scale + offset_x
@@ -415,7 +551,7 @@ class CADToGCodeConverter:
                 x2 = shape["x2"] * scale + offset_x
                 y2 = canvas_height - (shape["y2"] * scale + offset_y)
                 self.canvas.create_rectangle(x1, y1, x2, y2,
-                                           outline="black", width=2)
+                                            outline=line_color, width=line_width)
 
             elif shape["type"] == "arc":
                 cx = shape["cx"] * scale + offset_x
@@ -424,105 +560,61 @@ class CADToGCodeConverter:
                 start_angle = shape.get("start_angle", 0)
                 end_angle = shape.get("end_angle", 180)
                 extent = end_angle - start_angle
-                # Normalize extent to be between -360 and 360
                 if extent > 360:
                     extent = extent % 360
                 elif extent < -360:
                     extent = extent % -360
-                # Flip arc angles for inverted Y-axis (tkinter Y is top-down)
                 self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
                                       start=180-end_angle, extent=extent,
-                                      outline="black", width=2, style=tk.ARC)
+                                      outline=line_color, width=line_width, style=tk.ARC)
 
             elif shape["type"] == "polyline":
                 points = []
-                cad_points = []  # Store CAD coordinates for arrow drawing
+                cad_points = []
                 for x, y in shape["points"]:
                     canvas_x = x * scale + offset_x
                     canvas_y = canvas_height - (y * scale + offset_y)
                     points.extend([canvas_x, canvas_y])
                     cad_points.append((x, y))
+                    
                 if len(points) >= 4:
-                    # Check if this shape is selected
-                    shape_idx = self.shapes.index(shape)
-                    is_selected = (self.edit_mode and shape_idx == self.selected_shape_index)
-                    color = "blue" if is_selected else "black"
-                    width = 3 if is_selected else 2
-                    self.canvas.create_line(*points, fill=color, width=width)
+                    self.canvas.create_line(*points, fill=line_color, width=line_width)
                     
-                    # Draw directional arrows along the path
-                    self.draw_path_arrows(cad_points, scale, offset_x, offset_y, canvas_height, 
-                                         shape, is_selected)
+                    # Draw arrows
+                    self.draw_path_arrows(cad_points, scale, offset_x, offset_y, canvas_height, shape, is_selected)
                     
-                    # Draw start point marker if specified
-                    start_idx = shape.get("start_index")
-                    if start_idx is not None and 0 <= start_idx < len(shape["points"]):
-                        start_pt = shape["points"][start_idx]
-                        sx = start_pt[0] * scale + offset_x
-                        sy = canvas_height - (start_pt[1] * scale + offset_y)
-                        # Draw green circle for start point
-                        self.canvas.create_oval(sx - 6, sy - 6, sx + 6, sy + 6,
-                                              fill="green", outline="darkgreen", width=2)
-                        self.canvas.create_text(sx, sy - 10, text="START", fill="green", font=("Arial", 8, "bold"))
-                    
-                    # Draw entry point marker (blue)
-                    entry_idx = shape.get("entry_index")
-                    if entry_idx is not None and 0 <= entry_idx < len(shape["points"]):
-                        entry_pt = shape["points"][entry_idx]
-                        ex = entry_pt[0] * scale + offset_x
-                        ey = canvas_height - (entry_pt[1] * scale + offset_y)
-                        # Draw blue circle for entry point
-                        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
-                                              fill="blue", outline="darkblue", width=2)
-                        self.canvas.create_text(ex, ey - 10, text="ENTRY", fill="blue", font=("Arial", 8, "bold"))
-                    
-                    # Draw exit point marker (red)
-                    exit_idx = shape.get("exit_index")
-                    if exit_idx is not None and 0 <= exit_idx < len(shape["points"]):
-                        exit_pt = shape["points"][exit_idx]
-                        ex = exit_pt[0] * scale + offset_x
-                        ey = canvas_height - (exit_pt[1] * scale + offset_y)
-                        # Draw red circle for exit point
-                        self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
-                                              fill="red", outline="darkred", width=2)
-                        self.canvas.create_text(ex, ey - 10, text="EXIT", fill="red", font=("Arial", 8, "bold"))
-                    
+                    # Draw markers
+                    self.draw_markers(shape, scale, offset_x, offset_y, canvas_height)
         
-        # Update scroll region
         self.canvas.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
     
-    def draw_path_arrows(self, cad_points, scale, offset_x, offset_y, canvas_height, shape, is_selected):
-        """Draw green directional arrows along a path showing cutting direction"""
-        import math
+        self.canvas_scale = scale
+        self.canvas_offset_x = offset_x
+        self.canvas_offset_y = offset_y
         
+    def draw_path_arrows(self, cad_points, scale, offset_x, offset_y, canvas_height, shape, is_selected):
+        """Draw directional arrows"""
         if len(cad_points) < 2:
             return
         
-        # Determine point order based on start_index and direction
         points_list = list(cad_points)
         start_idx = shape.get("start_index", 0)
         if start_idx > 0 and start_idx < len(points_list):
             points_list = points_list[start_idx:] + points_list[:start_idx]
         
-        # Determine direction for closed shapes
         if shape.get("closed", False) and len(points_list) > 2:
             clockwise = shape.get("clockwise")
             if clockwise is not None:
-                # Calculate signed area to check natural direction
                 area = 0.0
                 for i in range(len(points_list)):
                     j = (i + 1) % len(points_list)
                     area += points_list[i][0] * points_list[j][1]
                     area -= points_list[j][0] * points_list[i][1]
                 is_naturally_clockwise = area < 0
-                
-                # Reverse if needed
                 if clockwise != is_naturally_clockwise:
                     points_list = [points_list[0]] + list(reversed(points_list[1:]))
         
-        # Draw arrows along the path
-        # Calculate spacing based on path length
         total_length = 0
         for i in range(len(points_list)):
             next_i = (i + 1) % len(points_list) if shape.get("closed", False) else i + 1
@@ -531,14 +623,12 @@ class CADToGCodeConverter:
                 dy = points_list[next_i][1] - points_list[i][1]
                 total_length += math.sqrt(dx*dx + dy*dy)
         
-        # Number of arrows based on path length (roughly one per 20-30 units)
         num_arrows = max(3, min(15, int(total_length / 25)))
         arrow_spacing = total_length / num_arrows if num_arrows > 0 else total_length
         
-        # Draw arrows
         current_length = 0
         target_length = arrow_spacing
-        arrow_color = "green"
+        arrow_color = "#27ae60"
         arrow_size = 8 * scale if scale > 0 else 8
         
         for i in range(len(points_list)):
@@ -548,7 +638,6 @@ class CADToGCodeConverter:
             
             p1 = points_list[i]
             p2 = points_list[next_i]
-            
             dx = p2[0] - p1[0]
             dy = p2[1] - p1[1]
             seg_length = math.sqrt(dx*dx + dy*dy)
@@ -556,47 +645,33 @@ class CADToGCodeConverter:
             if seg_length == 0:
                 continue
             
-            # Normalize direction
             dx_norm = dx / seg_length
             dy_norm = dy / seg_length
             
-            # Draw arrows along this segment
             while current_length + seg_length >= target_length:
-                # Calculate position along segment
                 t = (target_length - current_length) / seg_length if seg_length > 0 else 0
                 t = max(0, min(1, t))
                 
                 arrow_x = p1[0] + t * dx
                 arrow_y = p1[1] + t * dy
                 
-                # Convert to canvas coordinates
                 canvas_x = arrow_x * scale + offset_x
                 canvas_y = canvas_height - (arrow_y * scale + offset_y)
                 
-                # Calculate arrow angle
                 angle = math.atan2(dy_norm, dx_norm)
-                
-                # Draw arrow
                 arrow_len = arrow_size
-                arrow_angle = math.pi / 6  # 30 degrees
+                arrow_angle = math.pi / 6
                 
-                # Arrow head points
                 tip_x = canvas_x + arrow_len * math.cos(angle)
-                tip_y = canvas_y - arrow_len * math.sin(angle)  # Flip Y
-                
+                tip_y = canvas_y - arrow_len * math.sin(angle)
                 left_x = tip_x - arrow_len * 0.6 * math.cos(angle - arrow_angle)
-                left_y = tip_y + arrow_len * 0.6 * math.sin(angle - arrow_angle)  # Flip Y
-                
+                left_y = tip_y + arrow_len * 0.6 * math.sin(angle - arrow_angle)
                 right_x = tip_x - arrow_len * 0.6 * math.cos(angle + arrow_angle)
-                right_y = tip_y + arrow_len * 0.6 * math.sin(angle + arrow_angle)  # Flip Y
+                right_y = tip_y + arrow_len * 0.6 * math.sin(angle + arrow_angle)
                 
-                # Draw arrow
-                self.canvas.create_line(canvas_x, canvas_y, tip_x, tip_y, 
-                                      fill=arrow_color, width=2)
-                self.canvas.create_line(tip_x, tip_y, left_x, left_y, 
-                                      fill=arrow_color, width=2)
-                self.canvas.create_line(tip_x, tip_y, right_x, right_y, 
-                                      fill=arrow_color, width=2)
+                self.canvas.create_line(canvas_x, canvas_y, tip_x, tip_y, fill=arrow_color, width=2)
+                self.canvas.create_line(tip_x, tip_y, left_x, left_y, fill=arrow_color, width=2)
+                self.canvas.create_line(tip_x, tip_y, right_x, right_y, fill=arrow_color, width=2)
                 
                 target_length += arrow_spacing
             
@@ -605,87 +680,71 @@ class CADToGCodeConverter:
                 current_length -= target_length
                 target_length = arrow_spacing
         
-        # Update shape count
-        self.shape_count_label.config(text=f"Shapes: {len(self.shapes)}")
+    def draw_markers(self, shape, scale, offset_x, offset_y, canvas_height):
+        """Draw start/entry/exit point markers"""
+        points = shape.get("points", [])
         
-        # Store scale and offset for click detection
-        self.canvas_scale = scale
-        self.canvas_offset_x = offset_x
-        self.canvas_offset_y = offset_y
-            
-    def generate_gcode(self):
-        if not self.shapes:
-            messagebox.showwarning("Warning", "No shapes loaded. Please load a CAD file first.")
-            return
-            
-        try:
-            # Get settings
-            feed_rate = float(self.feed_rate_var.get())
-            plunge_rate = float(self.plunge_rate_var.get())
-            tool_radius = float(self.tool_radius_var.get())
-            depth = float(self.depth_var.get())
-            safety_height = float(self.safety_height_var.get())
-            curve_tolerance = float(self.curve_tolerance_var.get())
-            lead_in_length = float(self.lead_in_var.get())
-            units = self.units_var.get()
-            temp = float(self.temp_var.get())
-            
-            # Create generator
-            gen = GCodeGenerator()
-            gen.set_units(units)
-            gen.set_feed_rate(feed_rate)
-            gen.set_safety_height(safety_height)
-            gen.set_wire_temp(temp)
-            # Note: plunge_rate, tool_radius, curve_tolerance, and lead_in_length
-            # are no longer supported in the simplified gcode_generator.py
-            
-            # Generate G-code
-            gen.header("Foam Cutting from CAD File")
-            gen.generate_from_shapes(self.shapes, depth=depth)
-            gen.footer()
-            
-            # Show preview
-            gcode = gen.get_gcode()
-            self.preview_text.delete(1.0, tk.END)
-            self.preview_text.insert(1.0, gcode)
-            
-            # Store for saving
-            self.current_gcode = gcode
-            self.current_generator = gen
-            
-            messagebox.showinfo("Success", "G-code generated successfully!")
-            
-        except ValueError as e:
-            messagebox.showerror("Error", f"Invalid input value: {str(e)}")
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to generate G-code: {str(e)}")
-            
+        # Start point
+        start_idx = shape.get("start_index")
+        if start_idx is not None and 0 <= start_idx < len(points):
+            pt = points[start_idx]
+            sx = pt[0] * scale + offset_x
+            sy = canvas_height - (pt[1] * scale + offset_y)
+            self.canvas.create_oval(sx - 6, sy - 6, sx + 6, sy + 6,
+                                  fill="#27ae60", outline="#1e8449", width=2)
+            self.canvas.create_text(sx, sy - 12, text="START", fill="#27ae60",
+                                   font=("Arial", 8, "bold"))
+        
+        # Entry point
+        entry_idx = shape.get("entry_index")
+        if entry_idx is not None and 0 <= entry_idx < len(points):
+            pt = points[entry_idx]
+            ex = pt[0] * scale + offset_x
+            ey = canvas_height - (pt[1] * scale + offset_y)
+            self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
+                                  fill="#3498db", outline="#2980b9", width=2)
+            self.canvas.create_text(ex, ey - 12, text="ENTRY", fill="#3498db",
+                                   font=("Arial", 8, "bold"))
+        
+        # Exit point
+        exit_idx = shape.get("exit_index")
+        if exit_idx is not None and 0 <= exit_idx < len(points):
+            pt = points[exit_idx]
+            ex = pt[0] * scale + offset_x
+            ey = canvas_height - (pt[1] * scale + offset_y)
+            self.canvas.create_oval(ex - 6, ey - 6, ex + 6, ey + 6,
+                                  fill="#e74c3c", outline="#c0392b", width=2)
+            self.canvas.create_text(ex, ey - 12, text="EXIT", fill="#e74c3c",
+                                   font=("Arial", 8, "bold"))
+    
+    # Event handlers
     def toggle_edit_mode(self):
         """Toggle edit mode on/off"""
         self.edit_mode = self.edit_mode_var.get()
         print(f"Edit mode toggled: {self.edit_mode}")
         if self.edit_mode:
             self.canvas.config(cursor="crosshair")
-            # Ensure click binding is active
+            # Ensure click binding is active (already bound, but ensure it's active)
             self.canvas.bind("<Button-1>", self.on_canvas_click)
+            self.status_label.config(text="Edit Mode: Click shapes or points to configure")
             print("Edit mode ON - click handler bound")
         else:
             self.canvas.config(cursor="")
             self.selected_shape_index = None
             self.selected_label.config(text="Selected: None")
-            # Unbind click handler when edit mode is off
-            self.canvas.unbind("<Button-1>")
-            print("Edit mode OFF - click handler unbound")
+            self.status_label.config(text="Ready")
+            print("Edit mode OFF")
         self.update_shapes_list()  # Redraw with selection highlights
     
     def on_canvas_click(self, event):
-        """Handle canvas click - select shape or point"""
-        print(f"Canvas clicked at ({event.x}, {event.y}), edit_mode={self.edit_mode}, shapes={len(self.shapes)}")
-        
+        """Handle canvas click - select shape or point with full functionality"""
         # Visual feedback - draw a small marker at click location
         self.canvas.create_oval(event.x - 5, event.y - 5, event.x + 5, event.y + 5, 
                                fill="yellow", outline="orange", width=2, tags="click_marker")
-        self.root.after(1000, lambda: self.canvas.delete("click_marker"))  # Remove after 1 second
+        self.root.after(1000, lambda: self.canvas.delete("click_marker"))
+        
+        # Debug output (matching original)
+        print(f"Canvas clicked at ({event.x}, {event.y}), edit_mode={self.edit_mode}, shapes={len(self.shapes)}")
         
         if not self.edit_mode:
             print("Edit mode is False, returning")
@@ -694,6 +753,7 @@ class CADToGCodeConverter:
         if not self.shapes:
             print("No shapes loaded!")
             self.selected_label.config(text="No shapes loaded! Please load a CAD file first.")
+            self.status_label.config(text="No shapes loaded")
             return
         
         # Convert canvas coordinates to CAD coordinates
@@ -702,8 +762,8 @@ class CADToGCodeConverter:
         
         # Get actual canvas dimensions
         self.canvas.update_idletasks()
-        canvas_width = self.canvas.winfo_width() or 400
-        canvas_height = self.canvas.winfo_height() or 300
+        canvas_width = self.canvas.winfo_width() or 800
+        canvas_height = self.canvas.winfo_height() or 600
         
         # Convert to CAD coordinates (accounting for Y-axis flip)
         # Canvas Y is top-down, CAD Y is bottom-up
@@ -719,6 +779,7 @@ class CADToGCodeConverter:
             cad_x = canvas_x
             cad_y = canvas_y
         
+        # Debug output (matching original)
         print(f"Converting click: canvas=({canvas_x:.1f}, {canvas_y:.1f}) -> CAD=({cad_x:.1f}, {cad_y:.1f})")
         print(f"Canvas scale={self.canvas_scale:.4f}, offset=({self.canvas_offset_x:.1f}, {self.canvas_offset_y:.1f})")
         
@@ -726,9 +787,11 @@ class CADToGCodeConverter:
         closest_shape_idx = None
         closest_point_idx = None
         min_dist = float('inf')
-        all_distances = []  # For debugging
+        all_distances = []
         
+        # Debug output (matching original)
         print(f"Searching through {len(self.shapes)} shapes...")
+        
         # First, try to find closest point (vertex) - with corner snapping
         for idx, shape in enumerate(self.shapes):
             if shape["type"] == "polyline":
@@ -798,7 +861,6 @@ class CADToGCodeConverter:
                             continue
                         
                         # Calculate distance from point to line segment
-                        import math
                         dx = p2[0] - p1[0]
                         dy = p2[1] - p1[1]
                         length_sq = dx*dx + dy*dy
@@ -812,7 +874,6 @@ class CADToGCodeConverter:
                         proj_y = p1[1] + t * dy
                         
                         dist = math.sqrt((cad_x - proj_x)**2 + (cad_y - proj_y)**2)
-                        # Use larger threshold in CAD units
                         threshold = 30.0
                         
                         if dist < threshold and dist < min_line_dist:
@@ -830,6 +891,7 @@ class CADToGCodeConverter:
             shape = self.shapes[closest_shape_idx]
             point_info = f" at Point {closest_point_idx + 1}" if closest_point_idx is not None else ""
             self.selected_label.config(text=f"Selected: Shape {closest_shape_idx + 1} ({shape['type']}){point_info}")
+            self.status_label.config(text=f"Selected: Shape {closest_shape_idx + 1}")
             
             # Update start point combo with available points
             if shape["type"] == "polyline":
@@ -887,43 +949,38 @@ class CADToGCodeConverter:
             print(f"NO SHAPE FOUND near click point ({cad_x:.1f}, {cad_y:.1f})")
             self.selected_shape_index = None
             self.selected_label.config(text=f"Selected: None (clicked at {cad_x:.1f}, {cad_y:.1f})")
+            self.status_label.config(text="No shape found at click location")
             self.start_point_var.set("Auto")
             self.direction_var.set("Auto")
             self.entry_point_var.set("Auto")
             self.exit_point_var.set("Auto")
     
     def on_start_point_changed(self, event=None):
-        """Handle start point selection change"""
+        """Handle start point change"""
         if self.selected_shape_index is None:
             return
-        
         shape = self.shapes[self.selected_shape_index]
         if shape["type"] != "polyline":
             return
-        
         selected = self.start_point_var.get()
         if selected == "Auto":
             shape["start_index"] = None
         else:
-            # Extract point number from "Point N"
             try:
                 point_num = int(selected.split()[-1]) - 1
                 if 0 <= point_num < len(shape.get("points", [])):
                     shape["start_index"] = point_num
             except (ValueError, IndexError):
                 pass
-        
         self.update_shapes_list()
     
     def on_direction_changed(self, event=None):
-        """Handle direction selection change"""
+        """Handle direction change"""
         if self.selected_shape_index is None:
             return
-        
         shape = self.shapes[self.selected_shape_index]
         if shape["type"] != "polyline" or not shape.get("closed", False):
             return
-        
         selected = self.direction_var.get()
         if selected == "Auto":
             shape["clockwise"] = None
@@ -931,18 +988,15 @@ class CADToGCodeConverter:
             shape["clockwise"] = True
         elif selected == "Counter-Clockwise":
             shape["clockwise"] = False
-        
         self.update_shapes_list()
     
     def on_entry_point_changed(self, event=None):
-        """Handle entry point selection change"""
+        """Handle entry point change"""
         if self.selected_shape_index is None:
             return
-        
         shape = self.shapes[self.selected_shape_index]
         if shape["type"] != "polyline":
             return
-        
         selected = self.entry_point_var.get()
         if selected == "Auto":
             shape["entry_index"] = None
@@ -953,18 +1007,15 @@ class CADToGCodeConverter:
                     shape["entry_index"] = point_num
             except (ValueError, IndexError):
                 pass
-        
         self.update_shapes_list()
     
     def on_exit_point_changed(self, event=None):
-        """Handle exit point selection change"""
+        """Handle exit point change"""
         if self.selected_shape_index is None:
             return
-        
         shape = self.shapes[self.selected_shape_index]
         if shape["type"] != "polyline":
             return
-        
         selected = self.exit_point_var.get()
         if selected == "Auto":
             shape["exit_index"] = None
@@ -975,32 +1026,82 @@ class CADToGCodeConverter:
                     shape["exit_index"] = point_num
             except (ValueError, IndexError):
                 pass
-        
         self.update_shapes_list()
     
+    # G-code generation
+    def generate_gcode(self):
+        """Generate G-code"""
+        if not self.shapes:
+            messagebox.showwarning("Warning", "No shapes loaded. Please load a CAD file first.")
+            return
+            
+        try:
+            feed_rate = float(self.feed_rate_var.get())
+            depth = float(self.depth_var.get())
+            safety_height = float(self.safety_height_var.get())
+            units = self.units_var.get()
+            temp = float(self.temp_var.get())
+            
+            self.status_label.config(text="Generating G-code...")
+            self.root.update()
+            
+            gen = GCodeGenerator()
+            gen.set_units(units)
+            gen.set_feed_rate(feed_rate)
+            gen.set_safety_height(safety_height)
+            gen.set_wire_temp(temp)
+            
+            gen.header("Foam Cutting from CAD File")
+            gen.generate_from_shapes(self.shapes, depth=depth)
+            gen.footer()
+            
+            gcode = gen.get_gcode()
+            self.preview_text.delete(1.0, tk.END)
+            self.preview_text.insert(1.0, gcode)
+            
+            self.current_gcode = gcode
+            self.current_generator = gen
+            
+            self.status_label.config(text="G-code generated successfully!")
+            messagebox.showinfo("Success", "G-code generated successfully!")
+            
+        except ValueError as e:
+            messagebox.showerror("Error", f"Invalid input value: {str(e)}")
+            self.status_label.config(text=f"Error: {str(e)}")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to generate G-code: {str(e)}")
+            self.status_label.config(text=f"Error: {str(e)}")
+    
     def save_gcode(self):
+        """Save G-code to file"""
         if not hasattr(self, 'current_gcode'):
             messagebox.showwarning("Warning", "Please generate G-code first.")
             return
             
         filename = filedialog.asksaveasfilename(
+            title="Save G-code",
             defaultextension=".nc",
             filetypes=[("G-code", "*.nc *.gcode *.txt"), ("All files", "*.*")]
         )
         if filename:
             try:
                 self.current_generator.save(filename)
+                self.status_label.config(text=f"Saved to {os.path.basename(filename)}")
                 messagebox.showinfo("Success", f"G-code saved to {filename}")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to save file: {str(e)}")
+                self.status_label.config(text=f"Error: {str(e)}")
+
+
+# Alias for backward compatibility
+CADToGCodeConverter = ModernCADToGCodeConverter
 
 
 def main():
     root = tk.Tk()
-    app = CADToGCodeConverter(root)
+    app = ModernCADToGCodeConverter(root)
     root.mainloop()
 
 
 if __name__ == "__main__":
     main()
-
