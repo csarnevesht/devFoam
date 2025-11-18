@@ -181,13 +181,62 @@ class CADToGCodeConverter:
                     "end_angle": end_angle
                 })
             elif entity.dxftype() == "LWPOLYLINE":
+                # Convert polyline to points, handling arc segments
+                import math
                 points = []
-                for point in entity.get_points():
-                    points.append((point[0], point[1]))
+                # get_points() returns tuples: (x, y, start_width, end_width, bulge)
+                pl_points = list(entity.get_points())
+                
+                for i, point_data in enumerate(pl_points):
+                    # Extract x, y from tuple (may be numpy types)
+                    x = float(point_data[0])
+                    y = float(point_data[1])
+                    bulge = float(point_data[4]) if len(point_data) > 4 else 0.0
+                    points.append((x, y))
+                    
+                    # Check if this segment is an arc (has bulge)
+                    if bulge != 0:
+                        next_idx = (i + 1) % len(pl_points) if entity.closed else i + 1
+                        if next_idx < len(pl_points):
+                            p1 = points[i]
+                            next_point_data = pl_points[next_idx]
+                            p2 = (float(next_point_data[0]), float(next_point_data[1]))
+                            
+                            # Calculate arc from bulge
+                            # Bulge = tan(arc_angle / 4)
+                            arc_angle = 4 * math.atan(abs(bulge))
+                            dist = math.sqrt((p2[0] - p1[0])**2 + (p2[1] - p1[1])**2)
+                            if dist > 0 and arc_angle > 0:
+                                radius = dist / (2 * math.sin(arc_angle / 2))
+                                # Calculate arc center (perpendicular to chord midpoint)
+                                mid_x = (p1[0] + p2[0]) / 2
+                                mid_y = (p1[1] + p2[1]) / 2
+                                # Direction perpendicular to chord
+                                dx = p2[0] - p1[0]
+                                dy = p2[1] - p1[1]
+                                perp_dist = radius * math.cos(arc_angle / 2)
+                                if abs(dx) > abs(dy):
+                                    center_x = mid_x
+                                    center_y = mid_y + (perp_dist * (1 if bulge > 0 else -1))
+                                else:
+                                    center_x = mid_x + (perp_dist * (1 if bulge > 0 else -1))
+                                    center_y = mid_y
+                                
+                                # Add as separate arc shape
+                                self.shapes.append({
+                                    "type": "arc",
+                                    "cx": center_x,
+                                    "cy": center_y,
+                                    "radius": radius,
+                                    "start_angle": math.degrees(math.atan2(p1[1] - center_y, p1[0] - center_x)),
+                                    "end_angle": math.degrees(math.atan2(p2[1] - center_y, p2[0] - center_x))
+                                })
+                
                 if len(points) > 1:
                     self.shapes.append({
                         "type": "polyline",
-                        "points": points
+                        "points": points,
+                        "closed": entity.closed
                     })
                     
     def update_shapes_list(self):
@@ -283,7 +332,12 @@ class CADToGCodeConverter:
                 start_angle = shape.get("start_angle", 0)
                 end_angle = shape.get("end_angle", 180)
                 extent = end_angle - start_angle
-                # Flip arc angles for inverted Y-axis
+                # Normalize extent to be between -360 and 360
+                if extent > 360:
+                    extent = extent % 360
+                elif extent < -360:
+                    extent = extent % -360
+                # Flip arc angles for inverted Y-axis (tkinter Y is top-down)
                 self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
                                       start=180-end_angle, extent=extent,
                                       outline="black", width=2, style=tk.ARC)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Create a "devfoam" sign DXF with truly rounded, modern lowercase letters
-Uses multiple arcs to create smooth curves instead of straight lines
+Create a "devFoam" sign DXF file with bold block letters using polylines
+Requires: pip install ezdxf
 """
 
 try:
@@ -14,151 +14,350 @@ except ImportError:
     exit(1)
 
 def create_devfoam_sign(filename="devfoam_sign.dxf"):
-    """Create a devfoam sign with rounded lowercase letters"""
+    """Create a devFoam sign with bold block letters using polylines"""
     doc = ezdxf.new("R2010")
     msp = doc.modelspace()
-    
-    # Letter dimensions
-    letter_height = 90
-    letter_width = 58
-    letter_spacing = 62
-    bridge_y = 32
-    
-    text = "devfoam"
-    total_width = len(text) * letter_spacing + 100
-    total_height = letter_height + 80
-    
-    start_x = 50
-    start_y = 50 + letter_height
-    
-    # Bounding box
-    border_padding = 25
-    msp.add_line((border_padding, border_padding), 
-                (total_width - border_padding, border_padding))
-    msp.add_line((total_width - border_padding, border_padding), 
-                (total_width - border_padding, total_height - border_padding))
-    msp.add_line((total_width - border_padding, total_height - border_padding), 
-                (border_padding, total_height - border_padding))
-    msp.add_line((border_padding, total_height - border_padding), 
-                (border_padding, border_padding))
-    
-    # Reference lines
-    msp.add_line((start_x - 35, border_padding), 
-                (start_x - 35, total_height - border_padding), 
-                dxfattribs={'linetype': 'DASHED'})
-    msp.add_line((border_padding, border_padding + 15), 
-                (total_width - border_padding, border_padding + 15),
-                dxfattribs={'linetype': 'DASHED'})
-    
-    # Draw letters
+
+    # Letter dimensions - bold block letters
+    letter_height = 100
+    letter_width = 70
+    letter_spacing = 78
+    stroke_width = 12   # Width of letter strokes for block effect
+    bridge_height = 8   # Height of connecting bridges
+
+    # Text with proper capitalization
+    text = "devFoam"
+
+    # Calculate total dimensions
+    total_width = len(text) * letter_spacing + 60
+    total_height = letter_height + 100
+
+    # Starting position
+    start_x = 40
+    start_y = 60
+
+    # Draw bounding box using polyline
+    border_padding = 20
+    msp.add_lwpolyline([
+        (border_padding, border_padding),
+        (total_width - border_padding, border_padding),
+        (total_width - border_padding, total_height - border_padding),
+        (border_padding, total_height - border_padding),
+        (border_padding, border_padding)
+    ], close=True)
+
+    # Draw each letter
     letter_positions = []
     for i, letter in enumerate(text):
         x = start_x + i * letter_spacing
         y = start_y
-        letter_positions.append((x, y))
-        draw_rounded_letter(msp, letter, x, y, letter_width, letter_height)
-    
-    # Connecting bridges
-    for i in range(len(letter_positions) - 1):
-        x1, y1 = letter_positions[i]
-        x2, y2 = letter_positions[i + 1]
-        bridge_x1 = x1 + letter_width * 0.5
-        bridge_x2 = x2 + letter_width * 0.5
-        msp.add_line((bridge_x1, bridge_y), (bridge_x2, bridge_y),
-                    dxfattribs={'lineweight': 50})
-    
-    doc.saveas(filename)
-    print(f"✅ Created devfoam sign DXF: {filename}")
-    print(f"   Size: {total_width} x {total_height} units")
+        letter_positions.append((x, y, letter))
+        draw_block_letter_polyline(msp, letter, x, y, letter_width, letter_height, stroke_width)
 
-def draw_rounded_letter(msp, letter, x, y, width, height):
-    """Draw rounded lowercase letters using curves instead of straight lines"""
-    w = width / 2
-    h = height / 2
-    cy = y - h
-    
-    if letter == 'd':
-        # d: vertical + full rounded bowl
-        msp.add_line((x - w * 0.88, cy + h), (x - w * 0.88, cy - h))
-        msp.add_arc((x, cy), w * 0.88, 90, 270)
+    # Draw connecting bridges between letters at the baseline using polylines
+    bridge_y = start_y + 5  # Just above the baseline
+    for i in range(len(letter_positions) - 1):
+        x1, _, letter1 = letter_positions[i]
+        x2, _, letter2 = letter_positions[i + 1]
+
+        # Calculate bridge endpoints based on letter widths
+        bridge_x1 = x1 + letter_width - stroke_width/2
+        bridge_x2 = x2 + stroke_width/2
+
+        # Draw bridge as a closed polyline rectangle
+        msp.add_lwpolyline([
+            (bridge_x1, bridge_y),
+            (bridge_x2, bridge_y),
+            (bridge_x2, bridge_y + bridge_height),
+            (bridge_x1, bridge_y + bridge_height),
+            (bridge_x1, bridge_y)
+        ], close=True)
+
+    doc.saveas(filename)
+    print(f"✅ Created devFoam sign DXF: {filename}")
+    print(f"   Size: {total_width:.1f} x {total_height:.1f} units")
+    print(f"   Block letter style with {stroke_width}mm stroke width (polyline-based)")
+
+def draw_block_letter_polyline(msp, letter, x, y, width, height, stroke):
+    """Draw bold block-style letters using polylines - suitable for foam cutting"""
+    letter = letter.upper()
+
+    if letter == 'D':
+        # D: vertical bar + curved right side using polylines
+        # Left vertical stroke (polyline rectangle)
+        msp.add_lwpolyline([
+            (x, y),
+            (x + stroke, y),
+            (x + stroke, y + height),
+            (x, y + height),
+            (x, y)
+        ], close=True)
         
-    elif letter == 'e':
-        # e: rounded e - use arcs for rounded ends
-        # Top horizontal with rounded right end
-        msp.add_line((x - w, cy + h), (x + w * 0.7, cy + h))
-        msp.add_arc((x + w * 0.7, cy + h), w * 0.08, 180, 0)
+        # Top horizontal
+        msp.add_lwpolyline([
+            (x, y + height - stroke),
+            (x + width * 0.6, y + height - stroke),
+            (x + width * 0.6, y + height),
+            (x, y + height),
+            (x, y + height - stroke)
+        ], close=True)
+        
+        # Bottom horizontal
+        msp.add_lwpolyline([
+            (x, y),
+            (x + width * 0.6, y),
+            (x + width * 0.6, y + stroke),
+            (x, y + stroke),
+            (x, y)
+        ], close=True)
+        
+        # Right curved part (arc)
+        center_x = x + width * 0.35
+        center_y = y + height/2
+        radius = height/2 - stroke
+        msp.add_arc((center_x, center_y), radius, 270, 90)
+
+    elif letter == 'E':
+        # E: vertical bar + three horizontals using polylines
         # Left vertical
-        msp.add_line((x - w, cy + h), (x - w, cy - h))
-        # Middle horizontal with rounded right end
-        msp.add_line((x - w, cy), (x + w * 0.5, cy))
-        msp.add_arc((x + w * 0.5, cy), w * 0.06, 180, 0)
-        # Bottom horizontal with rounded right end
-        msp.add_line((x - w, cy - h), (x + w * 0.7, cy - h))
-        msp.add_arc((x + w * 0.7, cy - h), w * 0.08, 180, 0)
+        msp.add_lwpolyline([
+            (x, y),
+            (x + stroke, y),
+            (x + stroke, y + height),
+            (x, y + height),
+            (x, y)
+        ], close=True)
         
-    elif letter == 'v':
-        # v: smooth V with rounded bottom
-        # Use arc for smooth curve at bottom
-        bottom_y = cy - h * 0.95
-        msp.add_line((x - w * 0.8, cy + h), (x, bottom_y))
-        # Small arc at bottom for smoothness
-        msp.add_arc((x, bottom_y), w * 0.1, 180, 0)
-        msp.add_line((x, bottom_y), (x + w * 0.8, cy + h))
+        # Top horizontal
+        msp.add_lwpolyline([
+            (x, y + height - stroke),
+            (x + width * 0.85, y + height - stroke),
+            (x + width * 0.85, y + height),
+            (x, y + height),
+            (x, y + height - stroke)
+        ], close=True)
         
-    elif letter == 'f':
-        # f: vertical + two horizontals with rounded ends
-        msp.add_line((x - w, cy + h), (x - w, cy - h))
-        # Top horizontal with rounded end
-        msp.add_line((x - w, cy + h), (x + w * 0.65, cy + h))
-        msp.add_arc((x + w * 0.65, cy + h), w * 0.05, 180, 0)
-        # Middle horizontal with rounded end
-        msp.add_line((x - w, cy + h * 0.2), (x + w * 0.4, cy + h * 0.2))
-        msp.add_arc((x + w * 0.4, cy + h * 0.2), w * 0.04, 180, 0)
+        # Middle horizontal
+        mid_y = y + height/2 - stroke/2
+        msp.add_lwpolyline([
+            (x, mid_y),
+            (x + width * 0.75, mid_y),
+            (x + width * 0.75, mid_y + stroke),
+            (x, mid_y + stroke),
+            (x, mid_y)
+        ], close=True)
         
-    elif letter == 'o':
-        # o: perfect circle
-        radius = min(w, h) * 0.9
-        msp.add_circle((x, cy), radius)
+        # Bottom horizontal
+        msp.add_lwpolyline([
+            (x, y),
+            (x + width * 0.85, y),
+            (x + width * 0.85, y + stroke),
+            (x, y + stroke),
+            (x, y)
+        ], close=True)
+
+    elif letter == 'V':
+        # V: two diagonal strokes meeting at bottom using polylines
+        # Left diagonal
+        left_top = (x + stroke, y + height)
+        left_bottom = (x + width/2, y)
+        # Calculate perpendicular for thickness
+        dx = left_bottom[0] - left_top[0]
+        dy = left_bottom[1] - left_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (left_top[0] - px, left_top[1] - py),
+                (left_top[0] + px, left_top[1] + py),
+                (left_bottom[0] + px, left_bottom[1] + py),
+                (left_bottom[0] - px, left_bottom[1] - py),
+                (left_top[0] - px, left_top[1] - py)
+            ], close=True)
         
-    elif letter == 'a':
-        # a: rounded top, slightly rounded sides, inner hole
-        arch_y = cy + h * 0.38
-        arch_r = w * 1.0
-        # Top arch
-        msp.add_arc((x, arch_y), arch_r, 180, 0)
-        # Left side with slight curve
-        msp.add_arc((x - arch_r * 0.6, cy - h * 0.2), h * 0.15, 90, 180)
-        msp.add_line((x - arch_r, arch_y), (x - arch_r, cy - h))
-        # Right side with slight curve
-        msp.add_arc((x + arch_r * 0.6, cy - h * 0.2), h * 0.15, 0, 90)
-        msp.add_line((x + arch_r, arch_y), (x + arch_r, cy - h))
-        # Bottom with slight curve
-        msp.add_arc((x, cy - h), arch_r * 0.95, 180, 0)
-        # Inner hole
-        inner_r = min(w, h) * 0.5
-        msp.add_circle((x, cy), inner_r)
-        
-    elif letter == 'm':
-        # m: three verticals with smooth connecting curves
+        # Right diagonal
+        right_top = (x + width - stroke, y + height)
+        right_bottom = (x + width/2, y)
+        dx = right_bottom[0] - right_top[0]
+        dy = right_bottom[1] - right_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (right_top[0] - px, right_top[1] - py),
+                (right_top[0] + px, right_top[1] + py),
+                (right_bottom[0] + px, right_bottom[1] + py),
+                (right_bottom[0] - px, right_bottom[1] - py),
+                (right_top[0] - px, right_top[1] - py)
+            ], close=True)
+
+    elif letter == 'F':
+        # F: vertical bar + two horizontals using polylines
         # Left vertical
-        msp.add_line((x - w, cy + h), (x - w, cy - h))
-        # Left to middle - smooth curve
-        curve_center_x = x - w * 0.4
-        curve_center_y = cy + h * 0.3
-        msp.add_arc((curve_center_x, curve_center_y), w * 0.3, 180, 270)
-        msp.add_line((x - w, cy + h), (x - w * 0.3, cy))
-        # Middle vertical
-        msp.add_line((x - w * 0.3, cy), (x - w * 0.3, cy - h))
-        # Middle to right - smooth curve
-        curve_center_x2 = x + w * 0.1
-        msp.add_arc((curve_center_x2, curve_center_y), w * 0.3, 180, 270)
-        msp.add_line((x - w * 0.3, cy), (x + w * 0.3, cy + h))
+        msp.add_lwpolyline([
+            (x, y),
+            (x + stroke, y),
+            (x + stroke, y + height),
+            (x, y + height),
+            (x, y)
+        ], close=True)
+        
+        # Top horizontal
+        msp.add_lwpolyline([
+            (x, y + height - stroke),
+            (x + width * 0.85, y + height - stroke),
+            (x + width * 0.85, y + height),
+            (x, y + height),
+            (x, y + height - stroke)
+        ], close=True)
+        
+        # Middle horizontal
+        mid_y = y + height/2 - stroke/2
+        msp.add_lwpolyline([
+            (x, mid_y),
+            (x + width * 0.7, mid_y),
+            (x + width * 0.7, mid_y + stroke),
+            (x, mid_y + stroke),
+            (x, mid_y)
+        ], close=True)
+
+    elif letter == 'O':
+        # O: outer and inner octagons using polylines
+        offset = width * 0.15
+        h_offset = height * 0.15
+        # Outer octagon
+        outer_points = [
+            (x + offset, y + height),
+            (x + width - offset, y + height),
+            (x + width, y + height - h_offset),
+            (x + width, y + h_offset),
+            (x + width - offset, y),
+            (x + offset, y),
+            (x, y + h_offset),
+            (x, y + height - h_offset),
+            (x + offset, y + height)
+        ]
+        msp.add_lwpolyline(outer_points, close=True)
+
+        # Inner hole (smaller octagon)
+        inner_offset = offset + stroke + 2
+        inner_h_offset = h_offset + stroke + 2
+        inner_points = [
+            (x + inner_offset, y + height - stroke),
+            (x + width - inner_offset, y + height - stroke),
+            (x + width - stroke, y + height - inner_h_offset),
+            (x + width - stroke, y + inner_h_offset),
+            (x + width - inner_offset, y + stroke),
+            (x + inner_offset, y + stroke),
+            (x + stroke, y + inner_h_offset),
+            (x + stroke, y + height - inner_h_offset),
+            (x + inner_offset, y + height - stroke)
+        ]
+        msp.add_lwpolyline(inner_points, close=True)
+
+    elif letter == 'A':
+        # A: two diagonal strokes + horizontal crossbar using polylines
+        # Left diagonal
+        left_top = (x + stroke/2, y)
+        left_bottom = (x + width/2 - stroke/2, y + height)
+        dx = left_bottom[0] - left_top[0]
+        dy = left_bottom[1] - left_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (left_top[0] - px, left_top[1] - py),
+                (left_top[0] + px, left_top[1] + py),
+                (left_bottom[0] + px, left_bottom[1] + py),
+                (left_bottom[0] - px, left_bottom[1] - py),
+                (left_top[0] - px, left_top[1] - py)
+            ], close=True)
+        
+        # Right diagonal
+        right_top = (x + width/2 + stroke/2, y + height)
+        right_bottom = (x + width - stroke/2, y)
+        dx = right_bottom[0] - right_top[0]
+        dy = right_bottom[1] - right_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (right_top[0] - px, right_top[1] - py),
+                (right_top[0] + px, right_top[1] + py),
+                (right_bottom[0] + px, right_bottom[1] + py),
+                (right_bottom[0] - px, right_bottom[1] - py),
+                (right_top[0] - px, right_top[1] - py)
+            ], close=True)
+        
+        # Crossbar
+        crossbar_y = y + height * 0.4
+        msp.add_lwpolyline([
+            (x + width * 0.25, crossbar_y),
+            (x + width * 0.75, crossbar_y),
+            (x + width * 0.75, crossbar_y + stroke),
+            (x + width * 0.25, crossbar_y + stroke),
+            (x + width * 0.25, crossbar_y)
+        ], close=True)
+
+    elif letter == 'M':
+        # M: four verticals connected at top with diagonals using polylines
+        # Left vertical
+        msp.add_lwpolyline([
+            (x, y),
+            (x + stroke, y),
+            (x + stroke, y + height),
+            (x, y + height),
+            (x, y)
+        ], close=True)
+        
         # Right vertical
-        msp.add_line((x + w, cy + h), (x + w, cy - h))
-        # Connect right
-        msp.add_line((x + w * 0.3, cy + h), (x + w, cy + h))
+        msp.add_lwpolyline([
+            (x + width - stroke, y),
+            (x + width, y),
+            (x + width, y + height),
+            (x + width - stroke, y + height),
+            (x + width - stroke, y)
+        ], close=True)
+        
+        # Left diagonal (from top left to middle)
+        left_diag_top = (x + stroke, y + height)
+        left_diag_bottom = (x + width/2 - stroke/2, y + height * 0.5)
+        dx = left_diag_bottom[0] - left_diag_top[0]
+        dy = left_diag_bottom[1] - left_diag_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (left_diag_top[0] - px, left_diag_top[1] - py),
+                (left_diag_top[0] + px, left_diag_top[1] + py),
+                (left_diag_bottom[0] + px, left_diag_bottom[1] + py),
+                (left_diag_bottom[0] - px, left_diag_bottom[1] - py),
+                (left_diag_top[0] - px, left_diag_top[1] - py)
+            ], close=True)
+        
+        # Right diagonal (from middle to top right)
+        right_diag_top = (x + width - stroke, y + height)
+        right_diag_bottom = (x + width/2 + stroke/2, y + height * 0.5)
+        dx = right_diag_bottom[0] - right_diag_top[0]
+        dy = right_diag_bottom[1] - right_diag_top[1]
+        length = math.sqrt(dx*dx + dy*dy)
+        if length > 0:
+            px = -dy / length * stroke/2
+            py = dx / length * stroke/2
+            msp.add_lwpolyline([
+                (right_diag_top[0] - px, right_diag_top[1] - py),
+                (right_diag_top[0] + px, right_diag_top[1] + py),
+                (right_diag_bottom[0] + px, right_diag_bottom[1] + py),
+                (right_diag_bottom[0] - px, right_diag_bottom[1] - py),
+                (right_diag_top[0] - px, right_diag_top[1] - py)
+            ], close=True)
 
 if __name__ == "__main__":
     create_devfoam_sign("devfoam_sign.dxf")
-    print("\n✅ Sign created with rounded letters! Open in CAD viewer.")
+    print("\n✅ Sign created! Open in CAD viewer to see the result.")
 

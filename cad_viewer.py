@@ -320,9 +320,17 @@ class CADViewer:
                                             outline=color, width=width)
             elif shape["type"] == "arc":
                 cx, cy, r = shape["cx"], shape["cy"], shape["radius"]
-                # Simple arc drawing
+                # Use actual arc angles
+                start_angle = shape.get("start_angle", 0)
+                end_angle = shape.get("end_angle", 180)
+                extent = end_angle - start_angle
+                # Normalize extent to be between -360 and 360
+                if extent > 360:
+                    extent = extent % 360
+                elif extent < -360:
+                    extent = extent % -360
                 self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
-                                      start=shape["start_angle"], extent=180,
+                                      start=start_angle, extent=extent,
                                       outline=color, width=width, style=tk.ARC)
             elif shape["type"] == "polyline":
                 # Draw polyline as connected line segments
@@ -332,7 +340,10 @@ class CADViewer:
                     coords = []
                     for pt in points:
                         coords.extend([pt["x"], pt["y"]])
-                    self.canvas.create_line(*coords, fill=color, width=width)
+                    # If closed, connect last point to first
+                    if shape.get("closed", False) and len(points) > 2:
+                        coords.extend([points[0]["x"], points[0]["y"]])
+                    self.canvas.create_line(*coords, fill=color, width=width, smooth=False)
 
         # Update scroll region
         self.canvas.update_idletasks()
@@ -411,10 +422,56 @@ class CADViewer:
                     "end_angle": end_angle
                 })
             elif entity.dxftype() == "LWPOLYLINE":
-                # Convert polyline to points
+                # Convert polyline to points, handling arc segments
                 points = []
-                for point in entity.get_points():
-                    points.append({"x": point[0], "y": point[1]})
+                # get_points() returns tuples: (x, y, start_width, end_width, bulge)
+                pl_points = list(entity.get_points())
+                
+                for i, point_data in enumerate(pl_points):
+                    # Extract x, y from tuple (may be numpy types)
+                    x = float(point_data[0])
+                    y = float(point_data[1])
+                    bulge = float(point_data[4]) if len(point_data) > 4 else 0.0
+                    points.append({"x": x, "y": y})
+                    
+                    # Check if this segment is an arc (has bulge)
+                    if bulge != 0:
+                        next_idx = (i + 1) % len(pl_points) if entity.closed else i + 1
+                        if next_idx < len(pl_points):
+                            p1 = points[i]
+                            next_point_data = pl_points[next_idx]
+                            p2 = {"x": float(next_point_data[0]), "y": float(next_point_data[1])}
+                            
+                            # Calculate arc from bulge
+                            # Bulge = tan(arc_angle / 4)
+                            arc_angle = 4 * math.atan(abs(bulge))
+                            dist = math.sqrt((p2["x"] - p1["x"])**2 + (p2["y"] - p1["y"])**2)
+                            if dist > 0 and arc_angle > 0:
+                                radius = dist / (2 * math.sin(arc_angle / 2))
+                                # Calculate arc center (perpendicular to chord midpoint)
+                                mid_x = (p1["x"] + p2["x"]) / 2
+                                mid_y = (p1["y"] + p2["y"]) / 2
+                                # Direction perpendicular to chord
+                                dx = p2["x"] - p1["x"]
+                                dy = p2["y"] - p1["y"]
+                                perp_dist = radius * math.cos(arc_angle / 2)
+                                if abs(dx) > abs(dy):
+                                    center_x = mid_x
+                                    center_y = mid_y + (perp_dist * (1 if bulge > 0 else -1))
+                                else:
+                                    center_x = mid_x + (perp_dist * (1 if bulge > 0 else -1))
+                                    center_y = mid_y
+                                
+                                # Add as separate arc shape
+                                self.shapes.append({
+                                    "type": "arc",
+                                    "cx": center_x,
+                                    "cy": center_y,
+                                    "radius": radius,
+                                    "start_angle": math.degrees(math.atan2(p1["y"] - center_y, p1["x"] - center_x)),
+                                    "end_angle": math.degrees(math.atan2(p2["y"] - center_y, p2["x"] - center_x))
+                                })
+                
                 if len(points) > 1:
                     self.shapes.append({
                         "type": "polyline",
