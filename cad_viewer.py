@@ -270,17 +270,44 @@ class CADViewer:
             dx = max(x1 - x, 0, x - x2)
             dy = max(y1 - y, 0, y - y2)
             return math.sqrt(dx*dx + dy*dy)
+        elif shape["type"] == "polyline":
+            # Distance to polyline: find min distance to all segments
+            points = shape["points"]
+            min_dist = float('inf')
+            for i in range(len(points) - 1):
+                x1, y1 = points[i]["x"], points[i]["y"]
+                x2, y2 = points[i + 1]["x"], points[i + 1]["y"]
+                # Distance to line segment (same logic as line)
+                A = x - x1
+                B = y - y1
+                C = x2 - x1
+                D = y2 - y1
+                dot = A * C + B * D
+                len_sq = C * C + D * D
+                if len_sq == 0:
+                    dist = math.sqrt(A * A + B * B)
+                else:
+                    param = dot / len_sq
+                    if param < 0:
+                        xx, yy = x1, y1
+                    elif param > 1:
+                        xx, yy = x2, y2
+                    else:
+                        xx, yy = x1 + param * C, y1 + param * D
+                    dist = math.sqrt((x - xx)**2 + (y - yy)**2)
+                min_dist = min(min_dist, dist)
+            return min_dist
         return float('inf')
         
     def redraw(self):
         self.canvas.delete("all")
-        
+
         for i, shape in enumerate(self.shapes):
             color = "red" if i == self.selected_shape else "black"
             width = 3 if i == self.selected_shape else 1
-            
+
             if shape["type"] == "line":
-                self.canvas.create_line(shape["x1"], shape["y1"], 
+                self.canvas.create_line(shape["x1"], shape["y1"],
                                        shape["x2"], shape["y2"],
                                        fill=color, width=width)
             elif shape["type"] == "circle":
@@ -297,7 +324,16 @@ class CADViewer:
                 self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
                                       start=shape["start_angle"], extent=180,
                                       outline=color, width=width, style=tk.ARC)
-        
+            elif shape["type"] == "polyline":
+                # Draw polyline as connected line segments
+                points = shape["points"]
+                if len(points) >= 2:
+                    # Flatten points for tkinter
+                    coords = []
+                    for pt in points:
+                        coords.extend([pt["x"], pt["y"]])
+                    self.canvas.create_line(*coords, fill=color, width=width)
+
         # Update scroll region
         self.canvas.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
@@ -347,7 +383,7 @@ class CADViewer:
         doc = ezdxf.readfile(filename)
         msp = doc.modelspace()
         self.shapes = []
-        
+
         for entity in msp:
             if entity.dxftype() == "LINE":
                 self.shapes.append({
@@ -374,6 +410,17 @@ class CADViewer:
                     "start_angle": start_angle,
                     "end_angle": end_angle
                 })
+            elif entity.dxftype() == "LWPOLYLINE":
+                # Convert polyline to points
+                points = []
+                for point in entity.get_points():
+                    points.append({"x": point[0], "y": point[1]})
+                if len(points) > 1:
+                    self.shapes.append({
+                        "type": "polyline",
+                        "points": points,
+                        "closed": entity.closed
+                    })
                 
     def load_svg(self, filename):
         tree = ET.parse(filename)
@@ -527,16 +574,20 @@ class CADViewer:
             elif shape["type"] == "rectangle":
                 all_x.extend([shape["x1"], shape["x2"]])
                 all_y.extend([shape["y1"], shape["y2"]])
-                
+            elif shape["type"] == "polyline":
+                for pt in shape["points"]:
+                    all_x.append(pt["x"])
+                    all_y.append(pt["y"])
+
         if all_x and all_y:
             min_x, max_x = min(all_x), max(all_x)
             min_y, max_y = min(all_y), max(all_y)
             width = max_x - min_x
             height = max_y - min_y
-            
+
             canvas_width = self.canvas.winfo_width()
             canvas_height = self.canvas.winfo_height()
-            
+
             if width > 0 and height > 0:
                 scale_x = canvas_width / width * 0.9
                 scale_y = canvas_height / height * 0.9

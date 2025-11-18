@@ -252,45 +252,46 @@ class CADToGCodeConverter:
             offset_x = 0
             offset_y = 0
             
-        # Draw shapes
+        # Draw shapes (flip Y-axis to match CAD coordinate system)
         for shape in self.shapes:
             if shape["type"] == "line":
                 x1 = shape["x1"] * scale + offset_x
-                y1 = shape["y1"] * scale + offset_y
+                y1 = canvas_height - (shape["y1"] * scale + offset_y)
                 x2 = shape["x2"] * scale + offset_x
-                y2 = shape["y2"] * scale + offset_y
+                y2 = canvas_height - (shape["y2"] * scale + offset_y)
                 self.canvas.create_line(x1, y1, x2, y2, fill="black", width=2)
-                
+
             elif shape["type"] == "circle":
                 cx = shape["cx"] * scale + offset_x
-                cy = shape["cy"] * scale + offset_y
+                cy = canvas_height - (shape["cy"] * scale + offset_y)
                 r = shape["radius"] * scale
                 self.canvas.create_oval(cx - r, cy - r, cx + r, cy + r,
                                        outline="black", width=2)
-                                       
+
             elif shape["type"] == "rectangle":
                 x1 = shape["x1"] * scale + offset_x
-                y1 = shape["y1"] * scale + offset_y
+                y1 = canvas_height - (shape["y1"] * scale + offset_y)
                 x2 = shape["x2"] * scale + offset_x
-                y2 = shape["y2"] * scale + offset_y
+                y2 = canvas_height - (shape["y2"] * scale + offset_y)
                 self.canvas.create_rectangle(x1, y1, x2, y2,
                                            outline="black", width=2)
-                                           
+
             elif shape["type"] == "arc":
                 cx = shape["cx"] * scale + offset_x
-                cy = shape["cy"] * scale + offset_y
+                cy = canvas_height - (shape["cy"] * scale + offset_y)
                 r = shape["radius"] * scale
                 start_angle = shape.get("start_angle", 0)
                 end_angle = shape.get("end_angle", 180)
                 extent = end_angle - start_angle
+                # Flip arc angles for inverted Y-axis
                 self.canvas.create_arc(cx - r, cy - r, cx + r, cy + r,
-                                      start=start_angle, extent=extent,
+                                      start=180-end_angle, extent=extent,
                                       outline="black", width=2, style=tk.ARC)
-                                      
+
             elif shape["type"] == "polyline":
                 points = []
                 for x, y in shape["points"]:
-                    points.extend([x * scale + offset_x, y * scale + offset_y])
+                    points.extend([x * scale + offset_x, canvas_height - (y * scale + offset_y)])
                 if len(points) >= 4:
                     self.canvas.create_line(*points, fill="black", width=2)
         

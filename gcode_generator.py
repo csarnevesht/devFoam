@@ -250,7 +250,7 @@ class GCodeGenerator:
         """Generate G-code from shape dictionary (from CAD viewer)"""
         for shape in shapes:
             shape_type = shape.get("type")
-            
+
             if shape_type == "line":
                 x1, y1 = shape["x1"], shape["y1"]
                 x2, y2 = shape["x2"], shape["y2"]
@@ -258,17 +258,17 @@ class GCodeGenerator:
                 self.rapid_move(z=depth)
                 self.linear_move(x=x2, y=y2, z=depth)
                 self.rapid_move(z=self.safety_height)
-                
+
             elif shape_type == "circle":
                 cx, cy = shape["cx"], shape["cy"]
                 radius = shape["radius"]
                 self.cut_circle(cx, cy, radius, depth=depth)
-                
+
             elif shape_type == "rectangle":
                 x1, y1 = shape["x1"], shape["y1"]
                 x2, y2 = shape["x2"], shape["y2"]
                 self.cut_rectangle(x1, y1, x2, y2, depth=depth)
-                
+
             elif shape_type == "arc":
                 cx, cy = shape["cx"], shape["cy"]
                 radius = shape["radius"]
@@ -276,7 +276,20 @@ class GCodeGenerator:
                 end_angle = shape.get("end_angle", 180)
                 self.cut_circle(cx, cy, radius, depth=depth,
                               start_angle=start_angle, end_angle=end_angle)
-                
+
+            elif shape_type == "polyline":
+                # Handle polylines from DXF
+                points_data = shape.get("points", [])
+                points = []
+                for pt in points_data:
+                    if isinstance(pt, dict):
+                        points.append((pt["x"], pt["y"]))
+                    elif isinstance(pt, (tuple, list)):
+                        points.append((pt[0], pt[1]))
+                if points:
+                    closed = shape.get("closed", True)
+                    self.cut_contour(points, closed=closed, depth=depth)
+
         self.add_line("")
         
     def load_from_dxf(self, filename: str, depth: float = 0.0):
