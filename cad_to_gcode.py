@@ -416,8 +416,12 @@ class CADToGCodeConverter:
 
             elif shape["type"] == "polyline":
                 points = []
+                cad_points = []  # Store CAD coordinates for arrow drawing
                 for x, y in shape["points"]:
-                    points.extend([x * scale + offset_x, canvas_height - (y * scale + offset_y)])
+                    canvas_x = x * scale + offset_x
+                    canvas_y = canvas_height - (y * scale + offset_y)
+                    points.extend([canvas_x, canvas_y])
+                    cad_points.append((x, y))
                 if len(points) >= 4:
                     # Check if this shape is selected
                     shape_idx = self.shapes.index(shape)
@@ -425,6 +429,10 @@ class CADToGCodeConverter:
                     color = "blue" if is_selected else "black"
                     width = 3 if is_selected else 2
                     self.canvas.create_line(*points, fill=color, width=width)
+                    
+                    # Draw directional arrows along the path
+                    self.draw_path_arrows(cad_points, scale, offset_x, offset_y, canvas_height, 
+                                         shape, is_selected)
                     
                     # Draw start point marker if specified
                     start_idx = shape.get("start_index")
@@ -459,61 +467,123 @@ class CADToGCodeConverter:
                                               fill="red", outline="darkred", width=2)
                         self.canvas.create_text(ex, ey - 10, text="EXIT", fill="red", font=("Arial", 8, "bold"))
                     
-                    # Draw direction arrows for closed polylines
-                    if shape.get("closed", False) and len(shape["points"]) > 2:
-                        clockwise = shape.get("clockwise")
-                        if clockwise is not None:
-                            import math
-                            # Draw arrows along the path showing direction
-                            num_arrows = min(8, len(shape["points"]))
-                            step = max(1, len(shape["points"]) // num_arrows)
-                            
-                            # Determine point order based on direction
-                            points_list = list(shape["points"])
-                            start_idx = shape.get("start_index", 0)
-                            if start_idx > 0:
-                                points_list = points_list[start_idx:] + points_list[:start_idx]
-                            
-                            # Calculate signed area to check natural direction
-                            area = 0.0
-                            for i in range(len(points_list)):
-                                j = (i + 1) % len(points_list)
-                                area += points_list[i][0] * points_list[j][1]
-                                area -= points_list[j][0] * points_list[i][1]
-                            is_naturally_clockwise = area < 0
-                            
-                            # Reverse if needed
-                            if clockwise != is_naturally_clockwise:
-                                points_list = [points_list[0]] + list(reversed(points_list[1:]))
-                            
-                            # Draw arrows
-                            for i in range(0, len(points_list), step):
-                                pt1 = points_list[i]
-                                next_i = (i + step) % len(points_list)
-                                pt2 = points_list[next_i]
-                                
-                                x1 = pt1[0] * scale + offset_x
-                                y1 = canvas_height - (pt1[1] * scale + offset_y)
-                                x2 = pt2[0] * scale + offset_x
-                                y2 = canvas_height - (pt2[1] * scale + offset_y)
-                                
-                                # Draw arrow
-                                angle = math.atan2(y2 - y1, x2 - x1)
-                                arrow_len = 8
-                                arrow_angle = math.pi / 6
-                                
-                                # Arrow head
-                                x3 = x2 - arrow_len * math.cos(angle - arrow_angle)
-                                y3 = y2 - arrow_len * math.sin(angle - arrow_angle)
-                                x4 = x2 - arrow_len * math.cos(angle + arrow_angle)
-                                y4 = y2 - arrow_len * math.sin(angle + arrow_angle)
-                                
-                                self.canvas.create_line(x2, y2, x3, y3, fill="green", width=2)
-                                self.canvas.create_line(x2, y2, x4, y4, fill="green", width=2)
         
         # Update scroll region
         self.canvas.update_idletasks()
         self.canvas.config(scrollregion=self.canvas.bbox("all"))
+    
+    def draw_path_arrows(self, cad_points, scale, offset_x, offset_y, canvas_height, shape, is_selected):
+        """Draw green directional arrows along a path showing cutting direction"""
+        import math
+        
+        if len(cad_points) < 2:
+            return
+        
+        # Determine point order based on start_index and direction
+        points_list = list(cad_points)
+        start_idx = shape.get("start_index", 0)
+        if start_idx > 0 and start_idx < len(points_list):
+            points_list = points_list[start_idx:] + points_list[:start_idx]
+        
+        # Determine direction for closed shapes
+        if shape.get("closed", False) and len(points_list) > 2:
+            clockwise = shape.get("clockwise")
+            if clockwise is not None:
+                # Calculate signed area to check natural direction
+                area = 0.0
+                for i in range(len(points_list)):
+                    j = (i + 1) % len(points_list)
+                    area += points_list[i][0] * points_list[j][1]
+                    area -= points_list[j][0] * points_list[i][1]
+                is_naturally_clockwise = area < 0
+                
+                # Reverse if needed
+                if clockwise != is_naturally_clockwise:
+                    points_list = [points_list[0]] + list(reversed(points_list[1:]))
+        
+        # Draw arrows along the path
+        # Calculate spacing based on path length
+        total_length = 0
+        for i in range(len(points_list)):
+            next_i = (i + 1) % len(points_list) if shape.get("closed", False) else i + 1
+            if next_i < len(points_list):
+                dx = points_list[next_i][0] - points_list[i][0]
+                dy = points_list[next_i][1] - points_list[i][1]
+                total_length += math.sqrt(dx*dx + dy*dy)
+        
+        # Number of arrows based on path length (roughly one per 20-30 units)
+        num_arrows = max(3, min(15, int(total_length / 25)))
+        arrow_spacing = total_length / num_arrows if num_arrows > 0 else total_length
+        
+        # Draw arrows
+        current_length = 0
+        target_length = arrow_spacing
+        arrow_color = "green"
+        arrow_size = 8 * scale if scale > 0 else 8
+        
+        for i in range(len(points_list)):
+            next_i = (i + 1) % len(points_list) if shape.get("closed", False) else i + 1
+            if next_i >= len(points_list):
+                break
+            
+            p1 = points_list[i]
+            p2 = points_list[next_i]
+            
+            dx = p2[0] - p1[0]
+            dy = p2[1] - p1[1]
+            seg_length = math.sqrt(dx*dx + dy*dy)
+            
+            if seg_length == 0:
+                continue
+            
+            # Normalize direction
+            dx_norm = dx / seg_length
+            dy_norm = dy / seg_length
+            
+            # Draw arrows along this segment
+            while current_length + seg_length >= target_length:
+                # Calculate position along segment
+                t = (target_length - current_length) / seg_length if seg_length > 0 else 0
+                t = max(0, min(1, t))
+                
+                arrow_x = p1[0] + t * dx
+                arrow_y = p1[1] + t * dy
+                
+                # Convert to canvas coordinates
+                canvas_x = arrow_x * scale + offset_x
+                canvas_y = canvas_height - (arrow_y * scale + offset_y)
+                
+                # Calculate arrow angle
+                angle = math.atan2(dy_norm, dx_norm)
+                
+                # Draw arrow
+                arrow_len = arrow_size
+                arrow_angle = math.pi / 6  # 30 degrees
+                
+                # Arrow head points
+                tip_x = canvas_x + arrow_len * math.cos(angle)
+                tip_y = canvas_y - arrow_len * math.sin(angle)  # Flip Y
+                
+                left_x = tip_x - arrow_len * 0.6 * math.cos(angle - arrow_angle)
+                left_y = tip_y + arrow_len * 0.6 * math.sin(angle - arrow_angle)  # Flip Y
+                
+                right_x = tip_x - arrow_len * 0.6 * math.cos(angle + arrow_angle)
+                right_y = tip_y + arrow_len * 0.6 * math.sin(angle + arrow_angle)  # Flip Y
+                
+                # Draw arrow
+                self.canvas.create_line(canvas_x, canvas_y, tip_x, tip_y, 
+                                      fill=arrow_color, width=2)
+                self.canvas.create_line(tip_x, tip_y, left_x, left_y, 
+                                      fill=arrow_color, width=2)
+                self.canvas.create_line(tip_x, tip_y, right_x, right_y, 
+                                      fill=arrow_color, width=2)
+                
+                target_length += arrow_spacing
+            
+            current_length += seg_length
+            if current_length >= target_length:
+                current_length -= target_length
+                target_length = arrow_spacing
         
         # Update shape count
         self.shape_count_label.config(text=f"Shapes: {len(self.shapes)}")
