@@ -4,8 +4,36 @@ CAD to G-code Converter - Modern UI
 Integrated CAD viewer and G-code generator for foam cutting
 """
 
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+try:
+    import tkinter as tk
+    from tkinter import ttk, filedialog, messagebox
+    HAS_TKINTER = True
+except ImportError:
+    HAS_TKINTER = False
+    # Create dummy classes for environments without tkinter (e.g., web servers)
+    class tk:
+        class Tk:
+            pass
+        RAISED = "raised"
+    class ttk:
+        class Frame:
+            pass
+        class Notebook:
+            pass
+        class Scrollbar:
+            pass
+    class filedialog:
+        @staticmethod
+        def askopenfilename(**kwargs):
+            return None
+        @staticmethod
+        def asksaveasfilename(**kwargs):
+            return None
+    class messagebox:
+        @staticmethod
+        def showerror(title, message):
+            print(f"ERROR: {title}: {message}")
+
 import json
 import os
 import math
