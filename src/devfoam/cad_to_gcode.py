@@ -4,12 +4,40 @@ CAD to G-code Converter - Modern UI
 Integrated CAD viewer and G-code generator for foam cutting
 """
 
+# Try to import tkinter - handle all possible errors
+# On web servers, tkinter may exist but _tkinter C extension is missing
+# This causes an error inside tkinter's __init__.py which we need to catch
+HAS_TKINTER = False
+tk = None
+ttk = None
+filedialog = None
+messagebox = None
+
 try:
     import tkinter as tk
     from tkinter import ttk, filedialog, messagebox
-    HAS_TKINTER = True
-except ImportError:
+    # If we got here, try to verify tkinter actually works
+    # by attempting to create a dummy root (this will fail if _tkinter is missing)
+    try:
+        # Don't actually create a window, just test if the import chain works
+        # Accessing a class attribute should work if _tkinter is available
+        _ = tk.Tk.__name__
+        HAS_TKINTER = True
+    except (AttributeError, RuntimeError, ImportError, ModuleNotFoundError):
+        HAS_TKINTER = False
+        tk = None
+        ttk = None
+        filedialog = None
+        messagebox = None
+except Exception:
+    # Catch any exception during import (including errors from tkinter's __init__.py)
     HAS_TKINTER = False
+    tk = None
+    ttk = None
+    filedialog = None
+    messagebox = None
+
+if not HAS_TKINTER:
     # Create dummy classes for environments without tkinter (e.g., web servers)
     class tk:
         class Tk:
