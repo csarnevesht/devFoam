@@ -20,7 +20,8 @@ The code has been reorganized into a clean `src/` directory structure. See [PROJ
 - **DXF Import**: Load CAD files directly (requires ezdxf)
 - **Customizable Parameters**: Feed rate, depth, safety height, wire temperature
 - **Multiple Units**: Millimeters or inches
-- **GUI Tool**: Easy-to-use interface for CAD to G-code conversion
+- **Desktop GUI**: Easy-to-use Tkinter interface for local use
+- **Web Application**: Browser-based interface accessible from any device
 
 ## Installation
 
@@ -46,7 +47,7 @@ chmod +x devfoam-gui
 
 ## Usage
 
-### GUI Application (Recommended)
+### Desktop GUI Application
 
 ```bash
 # Method 1: Using the launcher
@@ -56,11 +57,40 @@ chmod +x devfoam-gui
 python3 -m devfoam
 ```
 
-The GUI provides:
+The desktop GUI provides:
 - CAD file loading (DXF, SVG, JSON)
 - Interactive visual editor
 - Real-time G-code preview
 - Parameter configuration
+
+### Web Application
+
+Access DevFoam from any web browser:
+
+```bash
+# Launch web server
+./devfoam-web
+
+# Or using Python
+python3 -m devfoam.web.app
+```
+
+Then open in your browser:
+- **Local**: http://localhost:5001
+- **Network**: http://your-ip-address:5001
+
+The web interface provides:
+- File upload (DXF, SVG, JSON)
+- Interactive canvas viewer with zoom/pan
+- Real-time G-code generation
+- Parameter configuration
+- G-code download
+
+**For production deployment**, see [Web Deployment Guide](docs/WEB_DEPLOYMENT.md) for:
+- Heroku, AWS, Google Cloud deployment
+- Nginx reverse proxy configuration
+- SSL/HTTPS setup
+- Security best practices
 
 ### Command Line Examples
 
@@ -100,19 +130,6 @@ gcode = gen.get_gcode()
 print(gcode)
 ```
 
-### GUI Application
-
-Run the integrated CAD to G-code converter:
-
-```bash
-python3 cad_to_gcode.py
-```
-
-This opens a GUI where you can:
-1. Load CAD files (DXF, JSON)
-2. Adjust cutting parameters
-3. Preview generated G-code
-4. Save G-code to file
 
 ## G-code Methods
 
