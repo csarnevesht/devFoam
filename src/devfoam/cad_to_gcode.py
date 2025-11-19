@@ -93,6 +93,7 @@ class ModernCADToGCodeConverter:
         self.pan_start_x = 0
         self.pan_start_y = 0
         self.is_panning = False
+        self.loaded_filename = None  # Store loaded CAD filename for default save name
         
         # Create modern UI
         self.setup_modern_ui()
@@ -452,6 +453,7 @@ class ModernCADToGCodeConverter:
                     return
                     
                 self.file_label.config(text=f"📄 {os.path.basename(filename)}")
+                self.loaded_filename = filename  # Store for default save filename
                 self.update_shapes_list()
                 self.status_label.config(text=f"Loaded {len(self.shapes)} shapes")
                 self.shape_count_status.config(text=f"Shapes: {len(self.shapes)}")
@@ -1158,11 +1160,23 @@ class ModernCADToGCodeConverter:
         if not hasattr(self, 'current_gcode'):
             messagebox.showwarning("Warning", "Please generate G-code first.")
             return
+        
+        # Suggest filename based on loaded CAD file
+        default_filename = "output.gcode"
+        if hasattr(self, 'loaded_filename') and self.loaded_filename:
+            base_name = os.path.splitext(os.path.basename(self.loaded_filename))[0]
+            default_filename = f"{base_name}.gcode"
             
         filename = filedialog.asksaveasfilename(
             title="Save G-code",
-            defaultextension=".nc",
-            filetypes=[("G-code", "*.nc *.gcode *.txt"), ("All files", "*.*")]
+            defaultextension=".gcode",
+            initialfile=default_filename,
+            filetypes=[
+                ("G-code", "*.gcode"),
+                ("G-code", "*.nc"),
+                ("Text", "*.txt"),
+                ("All files", "*.*")
+            ]
         )
         if filename:
             try:

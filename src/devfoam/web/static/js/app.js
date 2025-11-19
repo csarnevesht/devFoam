@@ -7,6 +7,7 @@ class DevFoamApp {
     constructor() {
         this.shapes = null;
         this.gcode = null;
+        this.loadedFilename = null;  // Store loaded filename for default save name
         this.canvas = document.getElementById('cadCanvas');
         this.ctx = this.canvas.getContext('2d');
 
@@ -101,6 +102,7 @@ class DevFoamApp {
 
             if (data.success) {
                 this.shapes = data.shapes;
+                this.loadedFilename = data.filename;  // Store for default save filename
                 this.hasAutoFitted = false; // Reset so auto-fit happens on new file
                 this.setStatus(`Loaded: ${data.filename}`, 'success');
                 this.renderShapes();
@@ -168,21 +170,19 @@ class DevFoamApp {
             return;
         }
 
-        const filename = 'devfoam_output.nc';
+        // Generate filename based on loaded CAD file, or use default
+        let filename = 'devfoam_output.gcode';
+        if (this.loadedFilename) {
+            // Remove extension and add .gcode
+            const baseName = this.loadedFilename.replace(/\.[^/.]+$/, '');
+            filename = `${baseName}.gcode`;
+        }
 
+        // Allow user to specify filename (optional - browser will prompt)
+        // For now, use the generated filename
         try {
-            const response = await fetch('/api/download', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    gcode: this.gcode,
-                    filename: filename
-                })
-            });
-
-            const blob = await response.blob();
+            // Create blob and download directly (no server call needed)
+            const blob = new Blob([this.gcode], { type: 'text/plain' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
@@ -192,7 +192,7 @@ class DevFoamApp {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
 
-            this.setStatus('G-code downloaded', 'success');
+            this.setStatus(`G-code saved as ${filename}`, 'success');
         } catch (error) {
             this.setStatus(`Download error: ${error.message}`, 'error');
         }

@@ -237,10 +237,10 @@ def download_gcode():
             return jsonify({'error': 'No G-code provided'}), 400
 
         gcode = data['gcode']
-        filename = data.get('filename', 'output.nc')
+        filename = data.get('filename', 'output.gcode')
 
         # Create temporary file
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.nc')
+        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.gcode')
         temp_file.write(gcode)
         temp_file.close()
 
