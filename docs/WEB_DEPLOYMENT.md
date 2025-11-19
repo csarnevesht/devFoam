@@ -155,6 +155,188 @@ sudo certbot --nginx -d your-domain.com
 # Auto-renewal is configured automatically
 ```
 
+## Free Hosting Providers
+
+For hosting the DevFoam web application for free, here are the best options:
+
+### 1. **Render** (Recommended) ⭐
+
+**Best for**: Easy deployment, automatic SSL, good free tier
+
+**Free Tier**:
+- 750 hours/month (enough for 24/7 operation)
+- Automatic SSL certificates
+- Custom domains
+- Sleeps after 15 minutes of inactivity (wakes on first request)
+
+**Setup**:
+1. Sign up at [render.com](https://render.com)
+2. Connect your GitHub repository
+3. Create a new "Web Service"
+4. Configure:
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `gunicorn -w 4 -b 0.0.0.0:$PORT --chdir src devfoam.web.app:app`
+   - **Environment**: Python 3
+   - **Port**: Use `$PORT` environment variable
+
+**Pros**: Very easy setup, great documentation, reliable
+**Cons**: App sleeps after inactivity (first request takes ~30 seconds)
+
+---
+
+### 2. **Railway**
+
+**Best for**: Simple deployment, good developer experience
+
+**Free Tier**:
+- $5 credit/month (usually enough for small apps)
+- Automatic deployments from Git
+- Custom domains
+
+**Setup**:
+1. Sign up at [railway.app](https://railway.app)
+2. Create new project from GitHub repo
+3. Add environment variable: `PORT` (Railway sets this automatically)
+4. Railway auto-detects Python and installs dependencies
+
+**Pros**: Very simple, no configuration needed, fast
+**Cons**: Limited free credit, may need to upgrade for heavy usage
+
+---
+
+### 3. **PythonAnywhere**
+
+**Best for**: Python-specific hosting, beginner-friendly
+
+**Free Tier**:
+- 1 web app
+- 512MB disk space
+- Limited CPU time
+- Must renew every 3 months (click button)
+
+**Setup**:
+1. Sign up at [pythonanywhere.com](https://www.pythonanywhere.com)
+2. Upload your code or clone from GitHub
+3. Create web app, select Flask
+4. Point to your `app.py` file
+
+**Pros**: Python-focused, good for learning, web-based console
+**Cons**: Must manually renew, limited resources
+
+---
+
+### 4. **Fly.io**
+
+**Best for**: Global edge deployment, Docker support
+
+**Free Tier**:
+- 3 shared-cpu VMs
+- 3GB persistent storage
+- 160GB outbound data transfer
+
+**Setup**:
+1. Install Fly CLI: `curl -L https://fly.io/install.sh | sh`
+2. Sign up: `fly auth signup`
+3. Create app: `fly launch`
+4. Deploy: `fly deploy`
+
+**Pros**: Global edge network, Docker support, generous free tier
+**Cons**: More complex setup, requires Docker knowledge
+
+---
+
+### 5. **Glitch**
+
+**Best for**: Quick prototyping, collaborative editing
+
+**Free Tier**:
+- Unlimited projects
+- Apps sleep after 5 minutes of inactivity
+- 512MB disk space
+
+**Setup**:
+1. Sign up at [glitch.com](https://glitch.com)
+2. Import from GitHub or create new project
+3. Add `package.json` and `server.js` (or use Python starter)
+4. Glitch auto-deploys on save
+
+**Pros**: Very easy, live editing, great for demos
+**Cons**: Apps sleep frequently, not ideal for production
+
+---
+
+### 6. **Replit**
+
+**Best for**: Development and hosting in one place
+
+**Free Tier**:
+- Always-on Repls (with limitations)
+- 500MB RAM
+- Custom domains
+
+**Setup**:
+1. Sign up at [replit.com](https://replit.com)
+2. Create new Repl, select "Flask"
+3. Import your code
+4. Click "Run" to deploy
+
+**Pros**: Integrated IDE, easy sharing, good for demos
+**Cons**: Resource limits, may be slow on free tier
+
+---
+
+### Comparison Table
+
+| Provider | Free Tier | Sleeps? | Setup Difficulty | Best For |
+|----------|-----------|---------|------------------|----------|
+| **Render** | 750 hrs/mo | Yes (15 min) | ⭐ Easy | Production apps |
+| **Railway** | $5 credit | No | ⭐ Easy | Quick deployment |
+| **PythonAnywhere** | 1 app | No* | ⭐⭐ Medium | Python beginners |
+| **Fly.io** | 3 VMs | No | ⭐⭐⭐ Hard | Advanced users |
+| **Glitch** | Unlimited | Yes (5 min) | ⭐ Very Easy | Prototyping |
+| **Replit** | Always-on | No | ⭐ Easy | Development |
+
+*Must manually renew every 3 months
+
+---
+
+### Recommended: Render
+
+For most users, **Render** is the best choice because:
+- ✅ Truly free (no credit card required)
+- ✅ Automatic SSL certificates
+- ✅ Easy GitHub integration
+- ✅ Good documentation
+- ✅ Reliable uptime
+- ⚠️ Only downside: app sleeps after 15 min (wakes automatically)
+
+### Quick Render Setup
+
+1. **Create `render.yaml`** in project root:
+```yaml
+services:
+  - type: web
+    name: devfoam-web
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 4 -b 0.0.0.0:$PORT --chdir src devfoam.web.app:app
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+```
+
+2. **Push to GitHub** (if not already)
+
+3. **Connect to Render**:
+   - Go to render.com
+   - New → Web Service
+   - Connect GitHub repo
+   - Render will auto-detect `render.yaml`
+
+4. **Deploy!** Render will build and deploy automatically.
+
+---
+
 ## Cloud Platform Deployment
 
 ### Heroku
