@@ -128,6 +128,70 @@ def generate_gcode():
         units = data.get('units', 'mm')
         depth = float(data.get('depth', 0.0))
 
+        # Convert shapes from dictionary format to list format
+        # Web format: {"lines": [...], "circles": [...], "polylines": [...]}
+        # Expected format: [{"type": "line", ...}, {"type": "circle", ...}, ...]
+        shape_list = []
+        
+        if isinstance(shapes, dict):
+            # Convert from dictionary format
+            if 'lines' in shapes:
+                for line in shapes['lines']:
+                    shape_list.append({
+                        'type': 'line',
+                        'x1': line.get('x1', 0),
+                        'y1': line.get('y1', 0),
+                        'x2': line.get('x2', 0),
+                        'y2': line.get('y2', 0)
+                    })
+            
+            if 'circles' in shapes:
+                for circle in shapes['circles']:
+                    shape_list.append({
+                        'type': 'circle',
+                        'cx': circle.get('cx', 0),
+                        'cy': circle.get('cy', 0),
+                        'radius': circle.get('radius', 0)
+                    })
+            
+            if 'rectangles' in shapes:
+                for rect in shapes['rectangles']:
+                    shape_list.append({
+                        'type': 'rectangle',
+                        'x1': rect.get('x1', 0),
+                        'y1': rect.get('y1', 0),
+                        'x2': rect.get('x2', 0),
+                        'y2': rect.get('y2', 0)
+                    })
+            
+            if 'arcs' in shapes:
+                for arc in shapes['arcs']:
+                    shape_list.append({
+                        'type': 'arc',
+                        'cx': arc.get('cx', 0),
+                        'cy': arc.get('cy', 0),
+                        'radius': arc.get('radius', 0),
+                        'start_angle': arc.get('start_angle', 0),
+                        'end_angle': arc.get('end_angle', 180)
+                    })
+            
+            if 'polylines' in shapes:
+                for poly in shapes['polylines']:
+                    shape_list.append({
+                        'type': 'polyline',
+                        'points': poly.get('points', []),
+                        'closed': poly.get('closed', True),
+                        'start_index': poly.get('start_index', None),
+                        'clockwise': poly.get('clockwise', None),
+                        'entry_index': poly.get('entry_index', None),
+                        'exit_index': poly.get('exit_index', None)
+                    })
+        elif isinstance(shapes, list):
+            # Already in list format
+            shape_list = shapes
+        else:
+            return jsonify({'error': 'Invalid shapes format'}), 400
+
         # Create G-code generator
         gen = GCodeGenerator()
         gen.set_feed_rate(feed_rate)
@@ -137,7 +201,7 @@ def generate_gcode():
 
         # Generate G-code
         gen.header("DevFoam Web - Foam Cutting")
-        gen.generate_from_shapes(shapes, depth=depth)
+        gen.generate_from_shapes(shape_list, depth=depth)
         gen.footer()
 
         gcode = gen.get_gcode()
