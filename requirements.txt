@@ -16,6 +16,7 @@ pytest>=7.0.0
 # For web application (optional - only needed for web version)
 Flask>=2.3.0
 Werkzeug>=2.3.0
+gunicorn>=21.2.0
 
 # Note: tkinter comes with Python on macOS, Windows, and most Linux distributions
 # On some Linux systems, you may need to install: sudo apt-get install python3-tk
